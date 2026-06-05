@@ -1,0 +1,29 @@
+# Environment — NUNCA subir al repositorio
+.env
+.env.local
+.env.*.local
+
+# Compiled output
+/dist
+/build
+
+# Dependencies
+/node_modules
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Test coverage
+/coverage
+
+/generated/prisma
