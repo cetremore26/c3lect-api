@@ -7,57 +7,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum CategoriaProducto {
-  RELOJ
-  PERFUME
-}
-
-enum Genero {
-  HOMBRE
-  MUJER
-  UNISEX
-}
-
 model Product {
-  id         String            @id
-  nombre     String
-  estilo     String
-  display    String
-  precio     Int
-  disponible Boolean           @default(true)
-  cat        CategoriaProducto
-  marca      String?
-  genero     Genero?
-  imgs       String[]
-  createdAt  DateTime?         @default(now()) @map("created_at")
-  updatedAt  DateTime?         @updatedAt @map("updated_at")
-
-  specMovimiento      String? @map("spec_movimiento")
-  specDimensiones     String? @map("spec_dimensiones")
-  specCaja            String? @map("spec_caja")
-  specCorrea          String? @map("spec_correa")
-  specCristal         String? @map("spec_cristal")
-  specFunciones       String? @map("spec_funciones")
-  specResistenciaAgua String? @map("spec_resistencia_agua")
-  specPeso            String? @map("spec_peso")
-  specBateria         String? @map("spec_bateria")
-  specReservaMarcha   String? @map("spec_reserva_marcha")
-  specObservaciones   String? @map("spec_observaciones")
-
-  notasDescripcion String? @map("notas_descripcion")
-  notasTop         String? @map("notas_top")
-  notasCorazon     String? @map("notas_corazon")
-  notasBase        String? @map("notas_base")
-
-  orderItems OrderItem[]
+  id                  String   @id
+  nombre              String
+  estilo              String
+  display             String
+  precio              Int
+  disponible          Boolean  @default(true)
+  cat                 String
+  imgs                String[] @default([])
+  specMovimiento      String?  @map("spec_movimiento")
+  specDimensiones     String?  @map("spec_dimensiones")
+  specCaja            String?  @map("spec_caja")
+  specCorrea          String?  @map("spec_correa")
+  specCristal         String?  @map("spec_cristal")
+  specFunciones       String?  @map("spec_funciones")
+  specResistenciaAgua String?  @map("spec_resistencia_agua")
+  specPeso            String?  @map("spec_peso")
+  specBateria         String?  @map("spec_bateria")
+  specReservaMarcha   String?  @map("spec_reserva_marcha")
+  specObservaciones   String?  @map("spec_observaciones")
+  notasDescripcion    String?  @map("notas_descripcion")
+  notasTop            String?  @map("notas_top")
+  notasCorazon        String?  @map("notas_corazon")
+  notasBase           String?  @map("notas_base")
+  marca               String?
+  genero              String?
 
   @@map("productos")
-}
-
-model OrderItem {
-  id        String  @id @default(cuid())
-  productId String  @map("product_id")
-  product   Product @relation(fields: [productId], references: [id])
-
-  @@map("order_items")
 }
