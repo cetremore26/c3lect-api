@@ -27,7 +27,7 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('C3LECT API')
-    .setDescription('Backend para la tienda C3LECT — sneakers & streetwear')
+    .setDescription('Backend para la plataforma de comercio electrónico premium C3LECT — Relojería y Perfumería')
     .setVersion('1.0')
     .addBearerAuth()
     .build();
