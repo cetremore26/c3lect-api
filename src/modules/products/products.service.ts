@@ -1,45 +1,50 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../prisma/prisma.service';
-import { QueryProductDto, RangoPrecio } from './dto/query-product.dto';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { ProductsRepository } from './products.repository';
+import { QueryProductDto, RangoPrecio } from './dto/query-product.dto';
+import { CreateProductDto } from './dto/create-product.dto';
+import { UpdateProductDto } from './dto/update-product.dto';
 
 @Injectable()
 export class ProductsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly productsRepository: ProductsRepository) {}
 
-  async findAll(query: QueryProductDto) {
+  findAll(query: QueryProductDto) {
     const where: Prisma.ProductWhereInput = {};
 
     if (query.categoria) {
       where.cat = { equals: query.categoria, mode: 'insensitive' };
     }
-
     if (query.marca) {
       where.marca = { equals: query.marca, mode: 'insensitive' };
     }
-
     if (query.genero) {
       where.genero = { equals: query.genero, mode: 'insensitive' };
     }
-
     if (query.soloDisponibles) {
       where.disponible = true;
     }
-
     if (query.rangoPrecio) {
       where.precio = this.parsePriceRange(query.rangoPrecio);
     }
 
-    return this.prisma.product.findMany({
-      where,
-      orderBy: [{ disponible: 'desc' }, { nombre: 'asc' }],
-    });
+    return this.productsRepository.findAll(where);
   }
 
-  async findOne(id: string) {
-    const product = await this.prisma.product.findUnique({ where: { id } });
-    if (!product) throw new NotFoundException(`Producto "${id}" no encontrado`);
-    return product;
+  findOne(id: string) {
+    return this.productsRepository.findById(id);
+  }
+
+  create(dto: CreateProductDto) {
+    return this.productsRepository.create(dto);
+  }
+
+  update(id: string, dto: UpdateProductDto) {
+    return this.productsRepository.update(id, dto);
+  }
+
+  remove(id: string) {
+    return this.productsRepository.remove(id);
   }
 
   private parsePriceRange(rango: RangoPrecio): Prisma.IntFilter {

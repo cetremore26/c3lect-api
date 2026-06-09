@@ -19,7 +19,7 @@ export class QueryProductDto {
   @IsString()
   marca?: string;
 
-  @ApiPropertyOptional({ example: 'MUJER' })
+  @ApiPropertyOptional({ example: 'Hombre' })
   @IsOptional()
   @IsString()
   genero?: string;
