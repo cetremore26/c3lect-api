@@ -58,6 +58,7 @@ model User {
 
   refreshTokens  RefreshToken[]
   passwordResets PasswordReset[]
+  orders         Order[]
 
   @@map("users")
 }
@@ -96,4 +97,85 @@ model PasswordReset {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("password_resets")
+}
+
+// ─── Orders ──────────────────────────────────────────────────────────────────
+
+enum EstadoPedido {
+  PENDIENTE
+  CONFIRMADO
+  EN_CAMINO
+  ENTREGADO
+  CANCELADO
+}
+
+enum MetodoPago {
+  TRANSFERENCIA
+  CONTRAENTREGA
+  TARJETA_CREDITO
+  TARJETA_DEBITO
+  NEQUI
+  DAVIPLATA
+}
+
+model Order {
+  id            String        @id @default(uuid())
+  orderNumber   String        @unique @map("order_number")
+  userId        String?       @map("user_id")
+  status        EstadoPedido   @default(PENDIENTE)
+  subtotal      Int
+  total         Int
+  paymentMethod MetodoPago @map("payment_method")
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  user          User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items         OrderItem[]
+  shippingInfo  ShippingInfo?
+  statusHistory OrderStatusHistory[]
+
+  @@map("orders")
+}
+
+model OrderItem {
+  id             String @id @default(uuid())
+  orderId        String @map("order_id")
+  productId      String @map("product_id")
+  nombre         String
+  precioUnitario Int    @map("precio_unitario")
+  cantidad       Int
+  subtotal       Int
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_items")
+}
+
+model ShippingInfo {
+  id             String  @id @default(uuid())
+  orderId        String  @unique @map("order_id")
+  nombreCompleto String  @map("nombre_completo")
+  email          String
+  telefono       String
+  ciudad         String
+  departamento   String
+  direccion      String
+  notas          String?
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("shipping_info")
+}
+
+model OrderStatusHistory {
+  id             String       @id @default(uuid())
+  orderId        String       @map("order_id")
+  statusAnterior EstadoPedido? @map("status_anterior")
+  statusNuevo    EstadoPedido  @map("status_nuevo")
+  changedBy      String?      @map("changed_by")
+  createdAt      DateTime     @default(now()) @map("created_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_status_history")
 }

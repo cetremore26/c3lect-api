@@ -44,6 +44,12 @@ export class AuthService {
     const tokens = await this.generateTokens(user);
     void this.mail.sendWelcome(user.email, user.nombre);
 
+    // Link any guest orders that used the same email
+    await this.prisma.order.updateMany({
+      where: { userId: null, shippingInfo: { email: dto.email } },
+      data: { userId: user.id },
+    });
+
     return {
       ...tokens,
       user: { id: user.id, email: user.email, nombre: user.nombre, rol: user.rol },

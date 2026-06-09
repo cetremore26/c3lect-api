@@ -5,6 +5,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './modules/products/products.module';
 import { AuthModule } from './auth/auth.module';
+import { OrdersModule } from './modules/orders/orders.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { AuthModule } from './auth/auth.module';
     PrismaModule,
     ProductsModule,
     AuthModule,
+    OrdersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
