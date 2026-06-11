@@ -14,11 +14,16 @@ import { UpdateProductDto } from './dto/update-product.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
+import { AuditService } from '../audit/audit.service';
 
 @ApiTags('Productos')
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly productsService: ProductsService) {}
+  constructor(
+    private readonly productsService: ProductsService,
+    private readonly auditService: AuditService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar productos con filtros opcionales' })
@@ -47,8 +52,17 @@ export class ProductsController {
   @ApiOperation({ summary: 'Crear producto (requiere rol ADMIN)' })
   @ApiCreatedResponse({ description: 'Producto creado' })
   @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
-  create(@Body() dto: CreateProductDto) {
-    return this.productsService.create(dto);
+  async create(
+    @Body() dto: CreateProductDto,
+    @CurrentUser() user: { id: string; rol: string; nombre?: string },
+  ) {
+    const product = await this.productsService.create(dto);
+    void this.auditService.log(
+      'CREAR', 'producto', product.id,
+      `Producto creado: ${product.display}`,
+      user.id, user.nombre,
+    );
+    return product;
   }
 
   @Patch(':id')
@@ -59,8 +73,18 @@ export class ProductsController {
   @ApiOkResponse({ description: 'Producto actualizado' })
   @ApiNotFoundResponse({ description: 'Producto no encontrado' })
   @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
-  update(@Param('id') id: string, @Body() dto: UpdateProductDto) {
-    return this.productsService.update(id, dto);
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateProductDto,
+    @CurrentUser() user: { id: string; rol: string; nombre?: string },
+  ) {
+    const product = await this.productsService.update(id, dto);
+    void this.auditService.log(
+      'EDITAR', 'producto', id,
+      `Producto editado: ${product.display}`,
+      user.id, user.nombre,
+    );
+    return product;
   }
 
   @Delete(':id')
@@ -72,7 +96,16 @@ export class ProductsController {
   @ApiOkResponse({ description: 'Producto eliminado' })
   @ApiNotFoundResponse({ description: 'Producto no encontrado' })
   @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
-  remove(@Param('id') id: string) {
-    return this.productsService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string; rol: string; nombre?: string },
+  ) {
+    const result = await this.productsService.remove(id);
+    void this.auditService.log(
+      'ELIMINAR', 'producto', id,
+      `Producto eliminado: ${id}`,
+      user.id, user.nombre,
+    );
+    return result;
   }
 }

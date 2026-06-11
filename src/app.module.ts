@@ -7,6 +7,9 @@ import { ProductsModule } from './modules/products/products.module';
 import { AuthModule } from './auth/auth.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { MetricsModule } from './modules/metrics/metrics.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -19,6 +22,9 @@ import { PaymentsModule } from './modules/payments/payments.module';
     AuthModule,
     OrdersModule,
     PaymentsModule,
+    AuditModule,
+    MetricsModule,
+    UsersModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },

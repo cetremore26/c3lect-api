@@ -9,6 +9,7 @@ import { EstadoPedido } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
@@ -42,6 +43,7 @@ export class OrdersService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly audit: AuditService,
   ) {}
 
   async createOrder(dto: CreateOrderDto, userId?: string) {
@@ -219,6 +221,12 @@ export class OrdersService {
     if (email) {
       void this.mail.sendOrderStatusUpdate(email, nombre, order.orderNumber, dto.status);
     }
+
+    void this.audit.log(
+      'ESTADO', 'pedido', id,
+      `Pedido ${order.orderNumber}: ${order.status} → ${dto.status}`,
+      adminId,
+    );
 
     return { message: `Pedido actualizado a ${dto.status}.` };
   }
