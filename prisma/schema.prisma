@@ -118,6 +118,13 @@ enum MetodoPago {
   DAVIPLATA
 }
 
+enum EstadoPago {
+  PENDIENTE
+  APROBADO
+  RECHAZADO
+  CANCELADO
+}
+
 model Order {
   id            String        @id @default(uuid())
   orderNumber   String        @unique @map("order_number")
@@ -133,6 +140,7 @@ model Order {
   items         OrderItem[]
   shippingInfo  ShippingInfo?
   statusHistory OrderStatusHistory[]
+  payments      Payment[]
 
   @@map("orders")
 }
@@ -178,4 +186,24 @@ model OrderStatusHistory {
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@map("order_status_history")
+}
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
+
+model Payment {
+  id           String     @id @default(uuid())
+  orderId      String     @map("order_id")
+  orderNumber  String     @map("order_number")
+  userId       String?    @map("user_id")
+  estado       EstadoPago @default(PENDIENTE)
+  preferenceId String?    @map("preference_id")
+  mpPaymentId  String?    @map("mp_payment_id")
+  checkoutUrl  String?    @map("checkout_url")
+  total        Int
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("payments")
 }

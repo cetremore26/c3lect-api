@@ -155,6 +155,40 @@ export class MailService {
     if (error) this.logger.error('sendOrderStatusUpdate error', error);
   }
 
+  // ─── Payments ──────────────────────────────────────────────────────────────
+
+  async sendPaymentConfirmation(
+    email: string,
+    nombre: string,
+    orderNumber: string,
+    total: number,
+    pdfBuffer: Buffer,
+  ): Promise<void> {
+    const { error } = await this.resend.emails.send({
+      from: this.from,
+      to: email,
+      subject: `Comprobante de pago — C3LECT #${orderNumber}`,
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
+          <h2 style="color:#111;margin-bottom:8px">Pago confirmado</h2>
+          <p style="color:#555">Hola ${nombre}, tu pago para el pedido <strong>#${orderNumber}</strong> fue aprobado exitosamente.</p>
+          <div style="background:#f4f4f5;border-radius:8px;padding:16px;margin:24px 0;text-align:center">
+            <span style="font-size:22px;font-weight:700;color:#C7AB2E">$${total.toLocaleString('es-CO')} COP</span>
+          </div>
+          <p style="color:#555">Adjuntamos tu comprobante de pago en PDF. Nos pondremos en contacto pronto con la información de envío.</p>
+          <p style="color:#888;font-size:13px;margin-top:24px">Gracias por tu compra en C3LECT.</p>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: `comprobante-${orderNumber}.pdf`,
+          content: pdfBuffer,
+        },
+      ],
+    });
+    if (error) this.logger.error('sendPaymentConfirmation error', error);
+  }
+
   async sendNewOrderAdmin(
     adminEmail: string,
     orderNumber: string,
