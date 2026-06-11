@@ -176,6 +176,12 @@ export class AuthService {
     return this.generateTokens(record.user);
   }
 
+  async getMe(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException('Usuario no encontrado.');
+    return { id: user.id, email: user.email, nombre: user.nombre, rol: user.rol };
+  }
+
   async logout(userId: string) {
     await this.prisma.refreshToken.deleteMany({ where: { userId } });
     return { message: 'Sesión cerrada.' };
