@@ -188,6 +188,21 @@ model OrderStatusHistory {
   @@map("order_status_history")
 }
 
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  accion      String   // CREAR | EDITAR | ELIMINAR | ESTADO
+  entidad     String   // producto | pedido
+  entidadId   String   @map("entidad_id")
+  descripcion String
+  userId      String?  @map("user_id")
+  userName    String?  @map("user_name")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("audit_log")
+}
+
 // ─── Payments ─────────────────────────────────────────────────────────────────
 
 model Payment {
