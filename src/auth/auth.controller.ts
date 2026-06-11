@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Get,
   HttpCode,
   HttpStatus,
   Post,
@@ -14,6 +15,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
   ApiConflictResponse,
+  ApiNotFoundResponse,
 } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -89,6 +91,17 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'Refresh token inválido o expirado' })
   refreshTokens(@Body() dto: RefreshTokenDto) {
     return this.authService.refreshTokens(dto);
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Obtener perfil del usuario autenticado' })
+  @ApiOkResponse({ description: 'Perfil del usuario' })
+  @ApiUnauthorizedResponse({ description: 'Token inválido o expirado' })
+  @ApiNotFoundResponse({ description: 'Usuario no encontrado' })
+  me(@CurrentUser() user: { id: string }) {
+    return this.authService.getMe(user.id);
   }
 
   @Post('logout')
