@@ -190,7 +190,7 @@ export class MetricsService {
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
-  async getPurchases(page: number, limit: number, desde?: string, hasta?: string, categoria?: string, modelo?: string) {
+  async getPurchases(page: number, limit: number, desde?: string, hasta?: string, categoria?: string) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (desde || hasta) {
@@ -199,7 +199,6 @@ export class MetricsService {
       if (hasta) where.fecha.lte = new Date(hasta);
     }
     if (categoria) where.categoria = categoria;
-    if (modelo) where.modelo = { contains: modelo, mode: 'insensitive' };
 
     const [data, total] = await Promise.all([
       this.prisma.purchase.findMany({ where, orderBy: { fecha: 'desc' }, skip, take: limit }),
