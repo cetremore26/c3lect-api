@@ -87,6 +87,15 @@ export class ProductsController {
     return product;
   }
 
+  @Post('sync')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Crear stubs de productos faltantes desde inventario (ADMIN)' })
+  syncFromInventario() {
+    return this.productsService.syncFromInventario();
+  }
+
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard)
