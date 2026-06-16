@@ -36,7 +36,6 @@ export class MetricsService {
       totalGastosAgg,
       ultimasVentasRaw,
       modelosPreciosRaw,
-      topProductosRaw,
     ] = await Promise.all([
       this.prisma.payment.aggregate({
         _sum: { total: true },
@@ -81,31 +80,31 @@ export class MetricsService {
       this.prisma.historicalSale.findMany({
         select: { modelo: true, precioVenta: true },
       }),
-      this.prisma.historicalSale.groupBy({
-        by: ['modelo'],
-        _sum: { precioVenta: true },
-        _count: { id: true },
-        orderBy: { _count: { id: 'desc' } },
-        take: 5,
-      }),
     ]);
 
     const totalCompras = totalComprasAgg._sum.costoTotal ?? 0;
     const totalVentas = totalVentasAgg._sum.precioVenta ?? 0;
+
+    // Clientes únicos y top productos calculados en JS para evitar
+    // limitaciones de groupBy + orderBy aggregate en Prisma
     const totalClientesHistoricos = await this.prisma.historicalSale
-      .findMany({ distinct: ['cliente'], select: { cliente: true } })
-      .then((r) => r.length);
+      .findMany({ select: { cliente: true } })
+      .then((r) => new Set(r.map((x) => x.cliente)).size);
 
     const ventasPorCategoria = { reloj: 0, perfume: 0, accesorio: 0 };
+    const conteoModelo: Record<string, { cantidad: number; total: number }> = {};
+
     for (const row of modelosPreciosRaw) {
       ventasPorCategoria[clasificarModelo(row.modelo)] += row.precioVenta;
+      if (!conteoModelo[row.modelo]) conteoModelo[row.modelo] = { cantidad: 0, total: 0 };
+      conteoModelo[row.modelo].cantidad += 1;
+      conteoModelo[row.modelo].total += row.precioVenta;
     }
 
-    const topProductos = topProductosRaw.map((r) => ({
-      modelo: r.modelo,
-      cantidad: r._count.id,
-      total: r._sum.precioVenta ?? 0,
-    }));
+    const topProductos = Object.entries(conteoModelo)
+      .sort((a, b) => b[1].cantidad - a[1].cantidad)
+      .slice(0, 5)
+      .map(([modelo, { cantidad, total }]) => ({ modelo, cantidad, total }));
 
     return {
       totalVentas,
