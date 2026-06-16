@@ -29,7 +29,7 @@ const PRECIOS_EXCEL = [
   { modelo: 'Lattafa Amethyst',               costoUnitario: 135000, costoAdicional: 25028, precioPublico: 240000, precioCierre: 210000 },
   { modelo: 'Lattafa Sublime',                costoUnitario: 135000, costoAdicional: 25028, precioPublico: 240000, precioCierre: 210000 },
   { modelo: 'Grandeur Dakota',                costoUnitario:  90000, costoAdicional: 25028, precioPublico: 190000, precioCierre: 170000 },
-  { modelo: 'Zakat Royale Rubina',            costoUnitario:  80000, costoAdicional: 25028, precioPublico: 190000, precioCierre: 160000 },
+  { modelo: 'Zakat Royale Rubinia',           costoUnitario:  80000, costoAdicional: 25028, precioPublico: 190000, precioCierre: 160000 },
   { modelo: 'Sahari Crystal Rose',            costoUnitario:  90000, costoAdicional: 25028, precioPublico: 180000, precioCierre: 160000 },
   { modelo: 'Sahari Ahwak',                   costoUnitario:  90000, costoAdicional: 25028, precioPublico: 180000, precioCierre: 160000 },
   { modelo: 'Amaran Sunrise (Madame)',         costoUnitario:  90000, costoAdicional: 25028, precioPublico: 200000, precioCierre: 180000 },
@@ -95,6 +95,19 @@ export class PreciosService {
   }
 
   async seedFromExcel() {
+    const modelosExcel = PRECIOS_EXCEL.map((p) => p.modelo);
+
+    // Modelos activos en compras (no eliminar sus entradas de precios)
+    const compras = await this.prisma.purchase.findMany({ select: { modelo: true } });
+    const modelosCompras = [...new Set(compras.map((c) => c.modelo))];
+
+    const modelosValidos = [...new Set([...modelosExcel, ...modelosCompras])];
+
+    // Eliminar entradas que ya no pertenecen a ninguna fuente válida
+    await this.prisma.precioProducto.deleteMany({
+      where: { modelo: { notIn: modelosValidos } },
+    });
+
     let upsertados = 0;
     for (const p of PRECIOS_EXCEL) {
       const costoTotal = p.costoUnitario + p.costoAdicional;
