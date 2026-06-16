@@ -21,7 +21,7 @@ export class InventarioService {
         select: { modelo: true, cantidad: true, costoUnitario: true, categoria: true },
       }),
       this.prisma.historicalSale.findMany({
-        select: { modelo: true, precioVenta: true },
+        select: { modelo: true },
       }),
     ]);
 
@@ -35,12 +35,10 @@ export class InventarioService {
       porModelo[c.modelo].costoUnitario = c.costoUnitario; // usa el más reciente
     }
 
-    // Contar ventas efectivas por modelo (excluir Uso Personal donde precioVenta = 0)
+    // Toda venta (incluso Uso Personal con precioVenta=0) descuenta stock físico
     const ventasPorModelo: Record<string, number> = {};
     for (const v of ventas) {
-      if (v.precioVenta > 0) {
-        ventasPorModelo[v.modelo] = (ventasPorModelo[v.modelo] ?? 0) + 1;
-      }
+      ventasPorModelo[v.modelo] = (ventasPorModelo[v.modelo] ?? 0) + 1;
     }
 
     let upsertados = 0;
