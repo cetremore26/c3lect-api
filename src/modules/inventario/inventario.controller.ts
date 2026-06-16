@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { InventarioService } from './inventario.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -17,5 +17,11 @@ export class InventarioController {
   @ApiOperation({ summary: 'Ver inventario maestro con stock y capital (ADMIN)' })
   findAll() {
     return this.inventarioService.findAll();
+  }
+
+  @Post('seed')
+  @ApiOperation({ summary: 'Poblar inventario_maestro y calculo_precios desde purchases históricas (ADMIN)' })
+  seed() {
+    return this.inventarioService.seed();
   }
 }
