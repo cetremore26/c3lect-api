@@ -34,10 +34,20 @@ export class VentasService {
       },
     });
 
+    // Descontar del inventario
     await this.prisma.inventarioMaestro.updateMany({
       where: { modelo: dto.modelo },
       data: { stock: { decrement: 1 } },
     });
+
+    // Si el stock llega a 0, deshabilitar el producto en la tienda
+    const inv = await this.prisma.inventarioMaestro.findUnique({ where: { modelo: dto.modelo } });
+    if (inv && inv.stock <= 0) {
+      await this.prisma.product.updateMany({
+        where: { nombre: { equals: dto.modelo, mode: 'insensitive' }, disponible: true },
+        data: { disponible: false },
+      });
+    }
 
     await this.audit.log(
       'CREAR', 'venta', venta.id,

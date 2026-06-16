@@ -6,6 +6,24 @@ import { UpdateCompraDto } from './dto/update-compra.dto';
 
 const COSTO_ADICIONAL_DEFAULT = 25028;
 
+const CAT_MAP: Record<string, string> = {
+  Reloj: 'reloj',
+  Perfume: 'perfume',
+  Accesorio: 'accesorio',
+};
+
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/[áàâä]/g, 'a').replace(/[éèêë]/g, 'e')
+    .replace(/[íìîï]/g, 'i').replace(/[óòôö]/g, 'o')
+    .replace(/[úùûü]/g, 'u').replace(/ñ/g, 'n')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
 @Injectable()
 export class ComprasService {
   constructor(
@@ -27,6 +45,7 @@ export class ComprasService {
       },
     });
 
+    // Inventario: crear o sumar stock
     await this.prisma.inventarioMaestro.upsert({
       where: { modelo: dto.modelo },
       update: {
@@ -42,19 +61,31 @@ export class ComprasService {
       },
     });
 
-    await this.prisma.precioProducto.upsert({
-      where: { modelo: dto.modelo },
-      update: {
-        costoUnitario: dto.costoUnitario,
-        costoTotal: dto.costoUnitario + COSTO_ADICIONAL_DEFAULT,
-      },
-      create: {
-        modelo: dto.modelo,
-        costoUnitario: dto.costoUnitario,
-        costoAdicional: COSTO_ADICIONAL_DEFAULT,
-        costoTotal: dto.costoUnitario + COSTO_ADICIONAL_DEFAULT,
-      },
-    });
+    // Precios: solo crear si no existe (no sobreescribir precios manuales)
+    const precioExistente = await this.prisma.precioProducto.findUnique({ where: { modelo: dto.modelo } });
+    if (!precioExistente) {
+      await this.prisma.precioProducto.create({
+        data: {
+          modelo: dto.modelo,
+          costoUnitario: dto.costoUnitario,
+          costoAdicional: COSTO_ADICIONAL_DEFAULT,
+          costoTotal: dto.costoUnitario + COSTO_ADICIONAL_DEFAULT,
+          // precioPublico y precioCierre quedan null — admin los completa
+        },
+      });
+    } else {
+      // Solo actualizar campos de costo, respetar precios fijados manualmente
+      await this.prisma.precioProducto.update({
+        where: { modelo: dto.modelo },
+        data: {
+          costoUnitario: dto.costoUnitario,
+          costoTotal: dto.costoUnitario + precioExistente.costoAdicional,
+        },
+      });
+    }
+
+    // Productos: crear stub si no existe, o habilitar si estaba deshabilitado
+    await this.syncProducto(dto.modelo, dto.categoria, 'create');
 
     await this.audit.log(
       'CREAR', 'compra', compra.id,
@@ -73,6 +104,7 @@ export class ComprasService {
     const costoUnitario = dto.costoUnitario ?? existing.costoUnitario;
     const categoria     = dto.categoria     ?? existing.categoria;
     const costoTotal    = cantidad * costoUnitario;
+    const modeloCambio  = dto.modelo && dto.modelo !== existing.modelo;
 
     const compra = await this.prisma.purchase.update({
       where: { id },
@@ -86,7 +118,8 @@ export class ComprasService {
       },
     });
 
-    if (dto.modelo && dto.modelo !== existing.modelo) {
+    // Ajustar inventario
+    if (modeloCambio) {
       await this.prisma.inventarioMaestro.updateMany({
         where: { modelo: existing.modelo },
         data: { stock: { decrement: existing.cantidad } },
@@ -108,17 +141,41 @@ export class ComprasService {
       });
     }
 
-    if (dto.costoUnitario !== undefined || (dto.modelo && dto.modelo !== existing.modelo)) {
-      await this.prisma.precioProducto.upsert({
-        where: { modelo },
-        update: { costoUnitario, costoTotal: costoUnitario + COSTO_ADICIONAL_DEFAULT },
-        create: {
-          modelo,
-          costoUnitario,
-          costoAdicional: COSTO_ADICIONAL_DEFAULT,
-          costoTotal: costoUnitario + COSTO_ADICIONAL_DEFAULT,
-        },
-      });
+    // Precios: actualizar solo costo (no tocar precios manuales)
+    if (dto.costoUnitario !== undefined || modeloCambio) {
+      const precioExistente = await this.prisma.precioProducto.findUnique({ where: { modelo } });
+      if (precioExistente) {
+        await this.prisma.precioProducto.update({
+          where: { modelo },
+          data: {
+            costoUnitario,
+            costoTotal: costoUnitario + precioExistente.costoAdicional,
+          },
+        });
+      } else {
+        await this.prisma.precioProducto.create({
+          data: {
+            modelo,
+            costoUnitario,
+            costoAdicional: COSTO_ADICIONAL_DEFAULT,
+            costoTotal: costoUnitario + COSTO_ADICIONAL_DEFAULT,
+          },
+        });
+      }
+    }
+
+    // Sync producto del modelo nuevo/actual
+    await this.syncProducto(modelo, categoria, 'update');
+
+    // Si el modelo cambió, verificar si el modelo viejo quedó sin stock
+    if (modeloCambio) {
+      const invViejo = await this.prisma.inventarioMaestro.findUnique({ where: { modelo: existing.modelo } });
+      if (!invViejo || invViejo.stock <= 0) {
+        await this.prisma.product.updateMany({
+          where: { nombre: { equals: existing.modelo, mode: 'insensitive' }, disponible: true },
+          data: { disponible: false },
+        });
+      }
     }
 
     await this.audit.log(
@@ -127,5 +184,45 @@ export class ComprasService {
     );
 
     return compra;
+  }
+
+  /**
+   * Crea un producto stub (pendiente) si no existe, o lo habilita si estaba deshabilitado.
+   * Solo actúa si hay stock disponible.
+   */
+  private async syncProducto(modelo: string, categoria: string, _op: 'create' | 'update') {
+    const inv = await this.prisma.inventarioMaestro.findUnique({ where: { modelo } });
+    if (!inv || inv.stock <= 0) return;
+
+    const productoExistente = await this.prisma.product.findFirst({
+      where: { nombre: { equals: modelo, mode: 'insensitive' } },
+    });
+
+    if (!productoExistente) {
+      const cat = CAT_MAP[categoria] ?? 'reloj';
+      const id  = slugify(modelo);
+      try {
+        await this.prisma.product.create({
+          data: {
+            id,
+            nombre: modelo,
+            estilo: '',
+            display: modelo,
+            precio: 0,
+            disponible: false, // pendiente — admin completa datos e imágenes
+            cat,
+            imgs: [],
+          },
+        });
+      } catch {
+        // ID duplicado por colisión de slug: ignorar, el producto ya existe con otro nombre similar
+      }
+    } else if (!productoExistente.disponible) {
+      // Tenemos stock de nuevo — habilitar producto
+      await this.prisma.product.update({
+        where: { id: productoExistente.id },
+        data: { disponible: true },
+      });
+    }
   }
 }
