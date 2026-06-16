@@ -203,6 +203,53 @@ model AuditLog {
   @@map("audit_log")
 }
 
+// ─── Historical Data ──────────────────────────────────────────────────────────
+
+model HistoricalSale {
+  id             String   @id @default(uuid())
+  fecha          DateTime @db.Date
+  cliente        String
+  celular        String?
+  modelo         String
+  estilo         String?
+  precioVenta    Int      @default(0) @map("precio_venta")
+  costoProducto  Int      @default(0) @map("costo_producto")
+  costoEnvio     Int      @default(0) @map("costo_envio")
+  abono          Int      @default(0)
+  saldoPendiente Int      @default(0) @map("saldo_pendiente")
+  gananciaNeta   Int?     @map("ganancia_neta")
+  fuente         String?
+  estado         String
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@map("historical_sales")
+}
+
+model Purchase {
+  id            String   @id @default(uuid())
+  fecha         DateTime @db.Date
+  modelo        String
+  cantidad      Int
+  costoUnitario Int      @map("costo_unitario")
+  costoTotal    Int      @map("costo_total")
+  categoria     String
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@map("purchases")
+}
+
+model Expense {
+  id          String   @id @default(uuid())
+  fecha       DateTime @db.Date
+  concepto    String
+  monto       Int
+  responsable String?
+  estado      String?
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("expenses")
+}
+
 // ─── Payments ─────────────────────────────────────────────────────────────────
 
 model Payment {
