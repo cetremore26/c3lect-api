@@ -137,11 +137,13 @@ export class MetricsService {
       this.prisma.inventarioMaestro.findMany({ select: { stock: true, costoUnitario: true } }),
     ]);
 
+    let totalPrecioVentas = 0;
     let totalVendido = 0;
     let gananciaNetaVentas = 0;
     let pendienteCobro = 0;
 
     for (const v of ventas) {
+      totalPrecioVentas += v.precioVenta;
       totalVendido += v.abono - (v.precioVenta > 0 ? v.costoEnvio : 0);
       if (v.precioVenta > 0) pendienteCobro += v.saldoPendiente;
       gananciaNetaVentas += calcGananciaPorVenta(v.estado, v.precioVenta, v.costoProducto, v.costoEnvio, v.abono);
@@ -152,6 +154,7 @@ export class MetricsService {
     const totalGastos = gastosAgg._sum.monto ?? 0;
 
     return {
+      totalPrecioVentas,
       totalVendido,
       gananciaNetaVentas,
       pendienteCobro,
