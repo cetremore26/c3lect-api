@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateCompraDto } from './dto/create-compra.dto';
 import { UpdateCompraDto } from './dto/update-compra.dto';
 
@@ -7,7 +8,10 @@ const COSTO_ADICIONAL_DEFAULT = 25028;
 
 @Injectable()
 export class ComprasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async create(dto: CreateCompraDto) {
     const costoTotal = dto.cantidad * dto.costoUnitario;
@@ -52,6 +56,11 @@ export class ComprasService {
       },
     });
 
+    await this.audit.log(
+      'CREAR', 'compra', compra.id,
+      `Nueva compra: ${dto.cantidad}x ${dto.modelo} — $${costoTotal.toLocaleString('es-CO')}`,
+    );
+
     return compra;
   }
 
@@ -77,9 +86,7 @@ export class ComprasService {
       },
     });
 
-    // Ajustar inventario según qué cambió
     if (dto.modelo && dto.modelo !== existing.modelo) {
-      // Modelo cambió: revertir stock del modelo viejo, sumar al nuevo
       await this.prisma.inventarioMaestro.updateMany({
         where: { modelo: existing.modelo },
         data: { stock: { decrement: existing.cantidad } },
@@ -90,7 +97,6 @@ export class ComprasService {
         create: { modelo, stock: cantidad, costoUnitario, categoria },
       });
     } else {
-      // Mismo modelo: ajustar diferencia de cantidad y actualizar costo/categoría
       const diff = cantidad - existing.cantidad;
       await this.prisma.inventarioMaestro.updateMany({
         where: { modelo },
@@ -102,7 +108,6 @@ export class ComprasService {
       });
     }
 
-    // Actualizar precios si cambió costoUnitario o modelo
     if (dto.costoUnitario !== undefined || (dto.modelo && dto.modelo !== existing.modelo)) {
       await this.prisma.precioProducto.upsert({
         where: { modelo },
@@ -115,6 +120,11 @@ export class ComprasService {
         },
       });
     }
+
+    await this.audit.log(
+      'EDITAR', 'compra', id,
+      `Compra editada: ${modelo} — ${cantidad} ud${cantidad !== 1 ? 's' : ''} a $${costoUnitario.toLocaleString('es-CO')}`,
+    );
 
     return compra;
   }

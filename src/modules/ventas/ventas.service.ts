@@ -1,12 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { calcGananciaPorVenta } from '../metrics/metrics.service';
 import { CreateVentaDto } from './dto/create-venta.dto';
 import { UpdateVentaDto } from './dto/update-venta.dto';
 
 @Injectable()
 export class VentasService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async create(dto: CreateVentaDto) {
     const saldoPendiente = dto.precioVenta > 0 ? Math.max(0, dto.precioVenta - dto.abono) : 0;
@@ -30,11 +34,15 @@ export class VentasService {
       },
     });
 
-    // Toda venta (incluso Uso Personal) descuenta una unidad del inventario
     await this.prisma.inventarioMaestro.updateMany({
       where: { modelo: dto.modelo },
       data: { stock: { decrement: 1 } },
     });
+
+    await this.audit.log(
+      'CREAR', 'venta', venta.id,
+      `Nueva venta: ${dto.modelo} — ${dto.cliente} (${dto.estado})`,
+    );
 
     return venta;
   }
@@ -48,7 +56,6 @@ export class VentasService {
     const costoEnvio    = dto.costoEnvio    ?? existing.costoEnvio;
     const abono         = dto.abono         ?? existing.abono;
 
-    // Auto-set estado a "Pagado" cuando el abono cubre el precio
     let estado = dto.estado ?? existing.estado;
     if (precioVenta > 0 && abono >= precioVenta) {
       estado = 'Pagado';
@@ -57,7 +64,7 @@ export class VentasService {
     const saldoPendiente = precioVenta > 0 ? Math.max(0, precioVenta - abono) : 0;
     const gananciaNeta   = calcGananciaPorVenta(estado, precioVenta, costoProducto, costoEnvio, abono);
 
-    return this.prisma.historicalSale.update({
+    const venta = await this.prisma.historicalSale.update({
       where: { id },
       data: {
         fecha:          dto.fecha    ? new Date(dto.fecha)             : existing.fecha,
@@ -75,5 +82,12 @@ export class VentasService {
         estado,
       },
     });
+
+    await this.audit.log(
+      'EDITAR', 'venta', id,
+      `Venta editada: ${venta.modelo} — ${venta.cliente} | Abono: ${abono} | Estado: ${estado}`,
+    );
+
+    return venta;
   }
 }

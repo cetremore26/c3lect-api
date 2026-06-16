@@ -1,18 +1,22 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { AuditService } from '../audit/audit.service';
 import { CreateGastoDto } from './dto/create-gasto.dto';
 import { UpdateGastoDto } from './dto/update-gasto.dto';
 
 @Injectable()
 export class GastosService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   findAll() {
     return this.prisma.expense.findMany({ orderBy: { fecha: 'desc' } });
   }
 
-  create(dto: CreateGastoDto) {
-    return this.prisma.expense.create({
+  async create(dto: CreateGastoDto) {
+    const gasto = await this.prisma.expense.create({
       data: {
         fecha: new Date(dto.fecha),
         concepto: dto.concepto,
@@ -21,26 +25,47 @@ export class GastosService {
         estado: dto.estado ?? null,
       },
     });
+
+    await this.audit.log(
+      'CREAR', 'gasto', gasto.id,
+      `Nuevo gasto: ${dto.concepto} — $${dto.monto.toLocaleString('es-CO')}`,
+    );
+
+    return gasto;
   }
 
   async update(id: string, dto: UpdateGastoDto) {
-    await this.assertExists(id);
+    const existing = await this.assertExists(id);
     const data: any = {};
-    if (dto.fecha)       data.fecha       = new Date(dto.fecha);
-    if (dto.concepto)    data.concepto    = dto.concepto;
-    if (dto.monto !== undefined) data.monto = dto.monto;
-    if (dto.responsable !== undefined) data.responsable = dto.responsable;
-    if (dto.estado !== undefined)      data.estado      = dto.estado;
-    return this.prisma.expense.update({ where: { id }, data });
+    if (dto.fecha)                         data.fecha       = new Date(dto.fecha);
+    if (dto.concepto)                      data.concepto    = dto.concepto;
+    if (dto.monto !== undefined)           data.monto       = dto.monto;
+    if (dto.responsable !== undefined)     data.responsable = dto.responsable;
+    if (dto.estado !== undefined)          data.estado      = dto.estado;
+
+    const gasto = await this.prisma.expense.update({ where: { id }, data });
+
+    await this.audit.log(
+      'EDITAR', 'gasto', id,
+      `Gasto editado: ${gasto.concepto} — $${gasto.monto.toLocaleString('es-CO')}`,
+    );
+
+    return gasto;
   }
 
   async remove(id: string) {
-    await this.assertExists(id);
-    return this.prisma.expense.delete({ where: { id } });
+    const existing = await this.assertExists(id);
+    await this.prisma.expense.delete({ where: { id } });
+
+    await this.audit.log(
+      'ELIMINAR', 'gasto', id,
+      `Gasto eliminado: ${existing.concepto} — $${existing.monto.toLocaleString('es-CO')}`,
+    );
   }
 
   private async assertExists(id: string) {
     const found = await this.prisma.expense.findUnique({ where: { id } });
     if (!found) throw new NotFoundException(`Gasto ${id} no encontrado`);
+    return found;
   }
 }
