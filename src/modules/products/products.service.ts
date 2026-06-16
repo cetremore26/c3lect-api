@@ -51,6 +51,10 @@ export class ProductsService {
     return this.productsRepository.syncFromInventario();
   }
 
+  deleteStubs() {
+    return this.productsRepository.deleteStubs();
+  }
+
   private parsePriceRange(rango: RangoPrecio): Prisma.IntFilter {
     switch (rango) {
       case RangoPrecio.BAJO:  return { gte: 0,   lte: 150 };
