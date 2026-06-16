@@ -29,13 +29,11 @@ export class VentasService {
       },
     });
 
-    // Descontar stock si es venta real
-    if (dto.precioVenta > 0) {
-      await this.prisma.inventarioMaestro.updateMany({
-        where: { modelo: dto.modelo },
-        data: { stock: { decrement: 1 } },
-      });
-    }
+    // Toda venta (incluso Uso Personal) descuenta una unidad del inventario
+    await this.prisma.inventarioMaestro.updateMany({
+      where: { modelo: dto.modelo },
+      data: { stock: { decrement: 1 } },
+    });
 
     return venta;
   }
