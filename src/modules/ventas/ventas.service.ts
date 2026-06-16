@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { calcGananciaPorVenta } from '../metrics/metrics.service';
 import { CreateVentaDto } from './dto/create-venta.dto';
+import { UpdateVentaDto } from './dto/update-venta.dto';
 
 @Injectable()
 export class VentasService {
@@ -36,5 +37,43 @@ export class VentasService {
     });
 
     return venta;
+  }
+
+  async update(id: string, dto: UpdateVentaDto) {
+    const existing = await this.prisma.historicalSale.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`Venta ${id} no encontrada`);
+
+    const precioVenta   = dto.precioVenta   ?? existing.precioVenta;
+    const costoProducto = dto.costoProducto ?? existing.costoProducto;
+    const costoEnvio    = dto.costoEnvio    ?? existing.costoEnvio;
+    const abono         = dto.abono         ?? existing.abono;
+
+    // Auto-set estado a "Pagado" cuando el abono cubre el precio
+    let estado = dto.estado ?? existing.estado;
+    if (precioVenta > 0 && abono >= precioVenta) {
+      estado = 'Pagado';
+    }
+
+    const saldoPendiente = precioVenta > 0 ? Math.max(0, precioVenta - abono) : 0;
+    const gananciaNeta   = calcGananciaPorVenta(estado, precioVenta, costoProducto, costoEnvio, abono);
+
+    return this.prisma.historicalSale.update({
+      where: { id },
+      data: {
+        fecha:          dto.fecha    ? new Date(dto.fecha)             : existing.fecha,
+        cliente:        dto.cliente  ?? existing.cliente,
+        celular:        dto.celular  !== undefined ? dto.celular        : existing.celular,
+        modelo:         dto.modelo   ?? existing.modelo,
+        estilo:         dto.estilo   !== undefined ? dto.estilo         : existing.estilo,
+        fuente:         dto.fuente   !== undefined ? dto.fuente         : existing.fuente,
+        precioVenta,
+        costoProducto,
+        costoEnvio,
+        abono,
+        saldoPendiente,
+        gananciaNeta,
+        estado,
+      },
+    });
   }
 }
