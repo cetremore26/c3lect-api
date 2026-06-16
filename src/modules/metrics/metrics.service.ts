@@ -180,7 +180,10 @@ export class MetricsService {
       if (desde) where.fecha.gte = new Date(desde);
       if (hasta) where.fecha.lte = new Date(hasta);
     }
-    if (estado) where.estado = estado;
+    if (estado) {
+      const lista = estado.split(',').map((e) => e.trim()).filter(Boolean);
+      where.estado = lista.length === 1 ? lista[0] : { in: lista };
+    }
     if (fuente) where.fuente = fuente;
 
     const [data, total] = await Promise.all([
