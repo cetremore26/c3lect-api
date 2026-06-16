@@ -58,14 +58,12 @@ export class MetricsController {
   @ApiQuery({ name: 'desde', required: false, type: String, description: 'YYYY-MM-DD' })
   @ApiQuery({ name: 'hasta', required: false, type: String, description: 'YYYY-MM-DD' })
   @ApiQuery({ name: 'categoria', required: false, type: String })
-  @ApiQuery({ name: 'modelo', required: false, type: String })
   getPurchases(
     @Query('page') page = '1',
     @Query('limit') limit = '20',
     @Query('desde') desde?: string,
     @Query('hasta') hasta?: string,
     @Query('categoria') categoria?: string,
-    @Query('modelo') modelo?: string,
   ) {
     return this.metricsService.getPurchases(
       Number(page),
@@ -73,7 +71,6 @@ export class MetricsController {
       desde,
       hasta,
       categoria,
-      modelo,
     );
   }
 }
