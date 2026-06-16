@@ -64,6 +64,17 @@ export class ProductsRepository {
     return { message: `Producto "${id}" eliminado` };
   }
 
+  async migrarIdsCurren(): Promise<{ actualizados: number }> {
+    const result = await this.prisma.$executeRaw`
+      UPDATE productos
+      SET id = CONCAT('r-curren-', SUBSTRING(id FROM 3))
+      WHERE nombre ILIKE 'Curren%'
+        AND id LIKE 'r-%'
+        AND id NOT LIKE 'r-curren-%'
+    `;
+    return { actualizados: result };
+  }
+
   async deleteStubs(): Promise<{ eliminados: number; ids: string[] }> {
     const stubs = await this.prisma.product.findMany({
       where: { precio: 0, estilo: '', imgs: { equals: [] } },
