@@ -10,6 +10,20 @@ function clasificarModelo(modelo: string): 'reloj' | 'perfume' | 'accesorio' {
   return 'reloj';
 }
 
+export function calcGananciaPorVenta(
+  estado: string,
+  precioVenta: number,
+  costoProducto: number,
+  costoEnvio: number,
+  abono: number,
+): number {
+  if (precioVenta === 0) return -costoProducto; // Uso Personal
+  const margen = precioVenta - costoProducto - costoEnvio;
+  if (estado === 'Pagado') return margen;
+  if (estado === 'Abonado' && precioVenta > 0) return Math.round((abono / precioVenta) * margen);
+  return 0; // Pendiente
+}
+
 @Injectable()
 export class MetricsService {
   constructor(private readonly prisma: PrismaService) {}
@@ -27,15 +41,11 @@ export class MetricsService {
       productosDisponibles,
       clientesRegistrados,
       ultimosPedidos,
-      // Historical
-      totalVentasAgg,
+      todasLasVentas,
       totalPedidosHistoricos,
-      gananciaNeta,
-      pendienteCobro,
       totalComprasAgg,
       totalGastosAgg,
       ultimasVentasRaw,
-      modelosPreciosRaw,
     ] = await Promise.all([
       this.prisma.payment.aggregate({
         _sum: { total: true },
@@ -43,62 +53,44 @@ export class MetricsService {
       }),
       this.prisma.payment.aggregate({
         _sum: { total: true },
-        where: {
-          estado: EstadoPago.APROBADO,
-          createdAt: { gte: inicioMesAnterior, lte: finMesAnterior },
-        },
+        where: { estado: EstadoPago.APROBADO, createdAt: { gte: inicioMesAnterior, lte: finMesAnterior } },
       }),
       this.prisma.order.count({
-        where: {
-          status: {
-            in: [EstadoPedido.PENDIENTE, EstadoPedido.CONFIRMADO, EstadoPedido.EN_CAMINO],
-          },
-        },
+        where: { status: { in: [EstadoPedido.PENDIENTE, EstadoPedido.CONFIRMADO, EstadoPedido.EN_CAMINO] } },
       }),
       this.prisma.product.count({ where: { disponible: true } }),
       this.prisma.user.count(),
       this.prisma.order.findMany({
         take: 5,
         orderBy: { createdAt: 'desc' },
-        include: {
-          items: true,
-          shippingInfo: true,
-          user: { select: { id: true, nombre: true, email: true } },
-        },
+        include: { items: true, shippingInfo: true, user: { select: { id: true, nombre: true, email: true } } },
       }),
-      // Historical aggregates
-      this.prisma.historicalSale.aggregate({ _sum: { precioVenta: true } }),
+      this.prisma.historicalSale.findMany({
+        select: { modelo: true, precioVenta: true, costoProducto: true, costoEnvio: true, abono: true, estado: true, cliente: true, saldoPendiente: true },
+      }),
       this.prisma.historicalSale.count(),
-      this.prisma.historicalSale.aggregate({ _sum: { gananciaNeta: true } }),
-      this.prisma.historicalSale.aggregate({ _sum: { saldoPendiente: true } }),
       this.prisma.purchase.aggregate({ _sum: { costoTotal: true } }),
       this.prisma.expense.aggregate({ _sum: { monto: true } }),
-      this.prisma.historicalSale.findMany({
-        take: 5,
-        orderBy: { fecha: 'desc' },
-      }),
-      this.prisma.historicalSale.findMany({
-        select: { modelo: true, precioVenta: true },
-      }),
+      this.prisma.historicalSale.findMany({ take: 5, orderBy: { fecha: 'desc' } }),
     ]);
 
-    const totalCompras = totalComprasAgg._sum.costoTotal ?? 0;
-    const totalVentas = totalVentasAgg._sum.precioVenta ?? 0;
-
-    // Clientes únicos y top productos calculados en JS para evitar
-    // limitaciones de groupBy + orderBy aggregate en Prisma
-    const totalClientesHistoricos = await this.prisma.historicalSale
-      .findMany({ select: { cliente: true } })
-      .then((r) => new Set(r.map((x) => x.cliente)).size);
-
+    // Calcular métricas en JS a partir de los datos crudos
+    let totalVendido = 0;
+    let gananciaNeta = 0;
+    let pendienteCobro = 0;
+    const totalClientesSet = new Set<string>();
     const ventasPorCategoria = { reloj: 0, perfume: 0, accesorio: 0 };
     const conteoModelo: Record<string, { cantidad: number; total: number }> = {};
 
-    for (const row of modelosPreciosRaw) {
-      ventasPorCategoria[clasificarModelo(row.modelo)] += row.precioVenta;
-      if (!conteoModelo[row.modelo]) conteoModelo[row.modelo] = { cantidad: 0, total: 0 };
-      conteoModelo[row.modelo].cantidad += 1;
-      conteoModelo[row.modelo].total += row.precioVenta;
+    for (const v of todasLasVentas) {
+      totalVendido += v.abono - (v.precioVenta > 0 ? v.costoEnvio : 0);
+      if (v.precioVenta > 0) pendienteCobro += v.saldoPendiente;
+      gananciaNeta += calcGananciaPorVenta(v.estado, v.precioVenta, v.costoProducto, v.costoEnvio, v.abono);
+      totalClientesSet.add(v.cliente);
+      ventasPorCategoria[clasificarModelo(v.modelo)] += v.precioVenta;
+      if (!conteoModelo[v.modelo]) conteoModelo[v.modelo] = { cantidad: 0, total: 0 };
+      conteoModelo[v.modelo].cantidad += 1;
+      conteoModelo[v.modelo].total += v.precioVenta;
     }
 
     const topProductos = Object.entries(conteoModelo)
@@ -106,20 +98,28 @@ export class MetricsService {
       .slice(0, 5)
       .map(([modelo, { cantidad, total }]) => ({ modelo, cantidad, total }));
 
+    const totalCompras = totalComprasAgg._sum.costoTotal ?? 0;
+    const totalGastos = totalGastosAgg._sum.monto ?? 0;
+    const inventario = await this.prisma.inventarioMaestro.findMany({ select: { stock: true, costoUnitario: true } });
+    const capitalInventario = inventario.reduce((s, i) => s + i.stock * i.costoUnitario, 0);
+
+    const variacion = summary_variacion(ventasMesAgg._sum.total ?? 0, ventasMesAnteriorAgg._sum.total ?? 0);
+
     return {
-      totalVentas,
+      totalVendido,
       ventasMes: ventasMesAgg._sum.total ?? 0,
       ventasMesAnterior: ventasMesAnteriorAgg._sum.total ?? 0,
+      variacionMes: variacion,
       pedidosActivos,
       totalPedidosHistoricos,
       productosDisponibles,
       clientesRegistrados,
-      totalClientesHistoricos,
+      totalClientesHistoricos: totalClientesSet.size,
       totalCompras,
-      totalGastos: totalGastosAgg._sum.monto ?? 0,
-      capitalInventario: totalCompras - (totalVentas - (gananciaNeta._sum.gananciaNeta ?? 0)),
-      gananciaNeta: gananciaNeta._sum.gananciaNeta ?? 0,
-      pendienteCobro: pendienteCobro._sum.saldoPendiente ?? 0,
+      totalGastos,
+      capitalInventario,
+      gananciaNeta,
+      pendienteCobro,
       ultimosPedidos,
       ultimasVentas: ultimasVentasRaw,
       ventasPorCategoria,
@@ -128,35 +128,35 @@ export class MetricsService {
   }
 
   async getFinancial() {
-    const [ventasAgg, gananciaNeta, pendienteCobro, comprasAgg, gastosAgg] = await Promise.all([
-      this.prisma.historicalSale.aggregate({
-        _sum: { precioVenta: true },
+    const [ventas, comprasAgg, gastosAgg, inventario] = await Promise.all([
+      this.prisma.historicalSale.findMany({
+        select: { precioVenta: true, costoProducto: true, costoEnvio: true, abono: true, saldoPendiente: true, estado: true },
       }),
-      this.prisma.historicalSale.aggregate({
-        _sum: { gananciaNeta: true },
-      }),
-      this.prisma.historicalSale.aggregate({
-        _sum: { saldoPendiente: true },
-      }),
-      this.prisma.purchase.aggregate({
-        _sum: { costoTotal: true },
-      }),
-      this.prisma.expense.aggregate({
-        _sum: { monto: true },
-      }),
+      this.prisma.purchase.aggregate({ _sum: { costoTotal: true } }),
+      this.prisma.expense.aggregate({ _sum: { monto: true } }),
+      this.prisma.inventarioMaestro.findMany({ select: { stock: true, costoUnitario: true } }),
     ]);
 
-    const totalVendido = ventasAgg._sum.precioVenta ?? 0;
-    const gananciaNetaVentas = gananciaNeta._sum.gananciaNeta ?? 0;
+    let totalVendido = 0;
+    let gananciaNetaVentas = 0;
+    let pendienteCobro = 0;
+
+    for (const v of ventas) {
+      totalVendido += v.abono - (v.precioVenta > 0 ? v.costoEnvio : 0);
+      if (v.precioVenta > 0) pendienteCobro += v.saldoPendiente;
+      gananciaNetaVentas += calcGananciaPorVenta(v.estado, v.precioVenta, v.costoProducto, v.costoEnvio, v.abono);
+    }
+
+    const capitalInventario = inventario.reduce((s, i) => s + i.stock * i.costoUnitario, 0);
     const totalCompras = comprasAgg._sum.costoTotal ?? 0;
     const totalGastos = gastosAgg._sum.monto ?? 0;
 
     return {
       totalVendido,
       gananciaNetaVentas,
-      pendienteCobro: pendienteCobro._sum.saldoPendiente ?? 0,
+      pendienteCobro,
       totalCompras,
-      capitalInventario: totalCompras - (totalVendido - gananciaNetaVentas),
+      capitalInventario,
       totalGastos,
       gananciaNeta: gananciaNetaVentas - totalGastos,
     };
@@ -165,7 +165,6 @@ export class MetricsService {
   async getSales(page: number, limit: number, desde?: string, hasta?: string, estado?: string, fuente?: string) {
     const skip = (page - 1) * limit;
     const where: any = {};
-
     if (desde || hasta) {
       where.fecha = {};
       if (desde) where.fecha.gte = new Date(desde);
@@ -175,22 +174,15 @@ export class MetricsService {
     if (fuente) where.fuente = fuente;
 
     const [data, total] = await Promise.all([
-      this.prisma.historicalSale.findMany({
-        where,
-        orderBy: { fecha: 'desc' },
-        skip,
-        take: limit,
-      }),
+      this.prisma.historicalSale.findMany({ where, orderBy: { fecha: 'desc' }, skip, take: limit }),
       this.prisma.historicalSale.count({ where }),
     ]);
-
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
   async getPurchases(page: number, limit: number, desde?: string, hasta?: string, categoria?: string) {
     const skip = (page - 1) * limit;
     const where: any = {};
-
     if (desde || hasta) {
       where.fecha = {};
       if (desde) where.fecha.gte = new Date(desde);
@@ -199,15 +191,14 @@ export class MetricsService {
     if (categoria) where.categoria = categoria;
 
     const [data, total] = await Promise.all([
-      this.prisma.purchase.findMany({
-        where,
-        orderBy: { fecha: 'desc' },
-        skip,
-        take: limit,
-      }),
+      this.prisma.purchase.findMany({ where, orderBy: { fecha: 'desc' }, skip, take: limit }),
       this.prisma.purchase.count({ where }),
     ]);
-
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
+}
+
+function summary_variacion(mes: number, mesAnterior: number): number | null {
+  if (mesAnterior === 0) return null;
+  return ((mes - mesAnterior) / mesAnterior) * 100;
 }

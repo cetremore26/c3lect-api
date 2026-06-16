@@ -203,6 +203,34 @@ model AuditLog {
   @@map("audit_log")
 }
 
+// ─── Inventario y Precios ─────────────────────────────────────────────────────
+
+model InventarioMaestro {
+  id            String   @id @default(uuid())
+  modelo        String   @unique
+  stock         Int      @default(0)
+  costoUnitario Int      @default(0) @map("costo_unitario")
+  categoria     String   @default("Reloj")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("inventario_maestro")
+}
+
+model PrecioProducto {
+  id             String   @id @default(uuid())
+  modelo         String   @unique
+  costoUnitario  Int      @default(0) @map("costo_unitario")
+  costoAdicional Int      @default(25028) @map("costo_adicional")
+  costoTotal     Int      @default(0) @map("costo_total")
+  precioPublico  Int?     @map("precio_publico")
+  precioCierre   Int?     @map("precio_cierre")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("calculo_precios")
+}
+
 // ─── Historical Data ──────────────────────────────────────────────────────────
 
 model HistoricalSale {
