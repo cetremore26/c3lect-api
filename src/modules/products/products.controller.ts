@@ -87,13 +87,13 @@ export class ProductsController {
     return product;
   }
 
-  @Post('sync')
+  @Post('cleanup-stubs')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Crear stubs de productos faltantes desde inventario (ADMIN)' })
-  syncFromInventario() {
-    return this.productsService.syncFromInventario();
+  @ApiOperation({ summary: 'Eliminar productos stub vacíos (precio=0, sin imágenes, sin estilo) — ADMIN' })
+  deleteStubs() {
+    return this.productsService.deleteStubs();
   }
 
   @Delete(':id')

@@ -64,6 +64,17 @@ export class ProductsRepository {
     return { message: `Producto "${id}" eliminado` };
   }
 
+  async deleteStubs(): Promise<{ eliminados: number; ids: string[] }> {
+    const stubs = await this.prisma.product.findMany({
+      where: { precio: 0, estilo: '', imgs: { equals: [] } },
+      select: { id: true },
+    });
+    if (stubs.length === 0) return { eliminados: 0, ids: [] };
+    const ids = stubs.map((s) => s.id);
+    await this.prisma.product.deleteMany({ where: { id: { in: ids } } });
+    return { eliminados: ids.length, ids };
+  }
+
   async syncFromInventario(): Promise<{ creados: number; modelos: string[] }> {
     const CAT_MAP: Record<string, string> = { Reloj: 'reloj', Perfume: 'perfume', Accesorio: 'accesorio' };
 
