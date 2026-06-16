@@ -10,6 +10,11 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { UsersModule } from './modules/users/users.module';
+import { VentasModule } from './modules/ventas/ventas.module';
+import { ComprasModule } from './modules/compras/compras.module';
+import { GastosModule } from './modules/gastos/gastos.module';
+import { InventarioModule } from './modules/inventario/inventario.module';
+import { PreciosModule } from './modules/precios/precios.module';
 
 @Module({
   imports: [
@@ -25,6 +30,11 @@ import { UsersModule } from './modules/users/users.module';
     AuditModule,
     MetricsModule,
     UsersModule,
+    VentasModule,
+    ComprasModule,
+    GastosModule,
+    InventarioModule,
+    PreciosModule,
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
