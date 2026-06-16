@@ -184,7 +184,7 @@ export class MetricsService {
     if (fuente) where.fuente = fuente;
 
     const [data, total] = await Promise.all([
-      this.prisma.historicalSale.findMany({ where, orderBy: { fecha: 'desc' }, skip, take: limit }),
+      this.prisma.historicalSale.findMany({ where, orderBy: [{ fecha: 'desc' }, { id: 'asc' }], skip, take: limit }),
       this.prisma.historicalSale.count({ where }),
     ]);
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
@@ -201,7 +201,7 @@ export class MetricsService {
     if (categoria) where.categoria = categoria;
 
     const [data, total] = await Promise.all([
-      this.prisma.purchase.findMany({ where, orderBy: { fecha: 'desc' }, skip, take: limit }),
+      this.prisma.purchase.findMany({ where, orderBy: [{ fecha: 'desc' }, { id: 'asc' }], skip, take: limit }),
       this.prisma.purchase.count({ where }),
     ]);
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
