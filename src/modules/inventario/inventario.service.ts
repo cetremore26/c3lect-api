@@ -41,6 +41,21 @@ export class InventarioService {
       ventasPorModelo[v.modelo] = (ventasPorModelo[v.modelo] ?? 0) + 1;
     }
 
+    const modelosActivos = Object.keys(porModelo);
+
+    // Eliminar entradas huérfanas (modelos que ya no existen en ninguna compra)
+    await this.prisma.inventarioMaestro.deleteMany({
+      where: { modelo: { notIn: modelosActivos } },
+    });
+    // En precios: solo eliminar entradas sin precios manuales (auto-creadas desde compras)
+    await this.prisma.precioProducto.deleteMany({
+      where: {
+        modelo: { notIn: modelosActivos },
+        precioPublico: null,
+        precioCierre: null,
+      },
+    });
+
     let upsertados = 0;
     for (const [modelo, datos] of Object.entries(porModelo)) {
       const vendidos = ventasPorModelo[modelo] ?? 0;
@@ -67,6 +82,6 @@ export class InventarioService {
       upsertados++;
     }
 
-    return { seeded: upsertados, modelos: Object.keys(porModelo) };
+    return { seeded: upsertados, modelos: modelosActivos };
   }
 }
