@@ -8,7 +8,7 @@ export class InventarioService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
-    const items = await this.prisma.inventarioMaestro.findMany({ orderBy: { modelo: 'asc' } });
+    const items = await this.prisma.inventarioMaestro.findMany({ orderBy: [{ stock: 'desc' }, { modelo: 'asc' }] });
     return items.map((i) => ({
       ...i,
       capitalItem: i.stock * i.costoUnitario,
