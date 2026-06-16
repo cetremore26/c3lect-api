@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
-import { EstadoPedido, EstadoPago, Rol } from '@prisma/client';
+import { EstadoPedido, EstadoPago } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+
+const PERFUME_KEYWORDS = ['Lattafa', 'Afnan', 'Sahari', 'Zakat', 'Grandeur', 'Amaran'];
+
+function clasificarModelo(modelo: string): 'reloj' | 'perfume' | 'accesorio' {
+  if (modelo.includes('Organizador')) return 'accesorio';
+  if (PERFUME_KEYWORDS.some((k) => modelo.includes(k))) return 'perfume';
+  return 'reloj';
+}
 
 @Injectable()
 export class MetricsService {
@@ -27,7 +35,7 @@ export class MetricsService {
       totalComprasAgg,
       totalGastosAgg,
       ultimasVentasRaw,
-      ventasPorCategoriaRaw,
+      modelosPreciosRaw,
       topProductosRaw,
     ] = await Promise.all([
       this.prisma.payment.aggregate({
@@ -49,7 +57,7 @@ export class MetricsService {
         },
       }),
       this.prisma.product.count({ where: { disponible: true } }),
-      this.prisma.user.count({ where: { rol: Rol.CLIENTE } }),
+      this.prisma.user.count(),
       this.prisma.order.findMany({
         take: 5,
         orderBy: { createdAt: 'desc' },
@@ -70,10 +78,8 @@ export class MetricsService {
         take: 5,
         orderBy: { fecha: 'desc' },
       }),
-      this.prisma.historicalSale.groupBy({
-        by: ['estilo'],
-        _sum: { precioVenta: true },
-        _count: { id: true },
+      this.prisma.historicalSale.findMany({
+        select: { modelo: true, precioVenta: true },
       }),
       this.prisma.historicalSale.groupBy({
         by: ['modelo'],
@@ -91,12 +97,8 @@ export class MetricsService {
       .then((r) => r.length);
 
     const ventasPorCategoria = { reloj: 0, perfume: 0, accesorio: 0 };
-    for (const row of ventasPorCategoriaRaw) {
-      const estiloLower = (row.estilo ?? '').toLowerCase();
-      const total = row._sum.precioVenta ?? 0;
-      if (estiloLower.includes('reloj')) ventasPorCategoria.reloj += total;
-      else if (estiloLower.includes('perfume')) ventasPorCategoria.perfume += total;
-      else ventasPorCategoria.accesorio += total;
+    for (const row of modelosPreciosRaw) {
+      ventasPorCategoria[clasificarModelo(row.modelo)] += row.precioVenta;
     }
 
     const topProductos = topProductosRaw.map((r) => ({
