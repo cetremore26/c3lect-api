@@ -20,7 +20,7 @@ export function calcGananciaPorVenta(
   if (precioVenta === 0) return -costoProducto; // Uso Personal
   const margen = precioVenta - costoProducto - costoEnvio;
   if (estado === 'Pagado') return margen;
-  if (estado === 'Abonado' && precioVenta > 0) return Math.round((abono / precioVenta) * margen);
+  if (estado === 'Abonado' && precioVenta > 0) return Math.floor((abono / precioVenta) * margen);
   return 0; // Pendiente
 }
 
@@ -128,13 +128,14 @@ export class MetricsService {
   }
 
   async getFinancial() {
-    const [ventas, comprasAgg, gastosAgg, inventario] = await Promise.all([
+    const [ventas, comprasAgg, gastosAgg, inventario, comprasCat] = await Promise.all([
       this.prisma.historicalSale.findMany({
         select: { precioVenta: true, costoProducto: true, costoEnvio: true, abono: true, saldoPendiente: true, estado: true },
       }),
       this.prisma.purchase.aggregate({ _sum: { costoTotal: true } }),
       this.prisma.expense.aggregate({ _sum: { monto: true } }),
       this.prisma.inventarioMaestro.findMany({ select: { stock: true, costoUnitario: true } }),
+      this.prisma.purchase.groupBy({ by: ['categoria'], _sum: { costoTotal: true } }),
     ]);
 
     let totalPrecioVentas = 0;
@@ -153,12 +154,18 @@ export class MetricsService {
     const totalCompras = comprasAgg._sum.costoTotal ?? 0;
     const totalGastos = gastosAgg._sum.monto ?? 0;
 
+    const comprasPorCategoria: Record<string, number> = {};
+    for (const g of comprasCat) {
+      comprasPorCategoria[g.categoria] = g._sum.costoTotal ?? 0;
+    }
+
     return {
       totalPrecioVentas,
       totalVendido,
       gananciaNetaVentas,
       pendienteCobro,
       totalCompras,
+      comprasPorCategoria,
       capitalInventario,
       totalGastos,
       gananciaNeta: gananciaNetaVentas - totalGastos,
