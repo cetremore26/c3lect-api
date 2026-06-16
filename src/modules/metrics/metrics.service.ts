@@ -20,7 +20,7 @@ export function calcGananciaPorVenta(
   if (precioVenta === 0) return -costoProducto; // Uso Personal
   const margen = precioVenta - costoProducto - costoEnvio;
   if (estado === 'Pagado') return margen;
-  if (estado === 'Abonado' && precioVenta > 0) return Math.floor((abono / precioVenta) * margen);
+  if (estado === 'Abonado' && precioVenta > 0) return (abono / precioVenta) * margen;
   return 0; // Pendiente
 }
 
