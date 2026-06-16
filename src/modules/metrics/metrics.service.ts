@@ -11,17 +11,15 @@ function clasificarModelo(modelo: string): 'reloj' | 'perfume' | 'accesorio' {
 }
 
 export function calcGananciaPorVenta(
-  estado: string,
+  _estado: string,
   precioVenta: number,
   costoProducto: number,
   costoEnvio: number,
   abono: number,
 ): number {
-  if (precioVenta === 0) return -costoProducto; // Uso Personal
+  if (precioVenta === 0) return -costoProducto - costoEnvio;
   const margen = precioVenta - costoProducto - costoEnvio;
-  if (estado === 'Pagado') return margen;
-  if (estado === 'Abonado' && precioVenta > 0) return (abono / precioVenta) * margen;
-  return 0; // Pendiente
+  return (Math.min(abono, precioVenta) / precioVenta) * margen;
 }
 
 @Injectable()
@@ -186,10 +184,15 @@ export class MetricsService {
     }
     if (fuente) where.fuente = fuente;
 
-    const [data, total] = await Promise.all([
+    const [raw, total] = await Promise.all([
       this.prisma.historicalSale.findMany({ where, orderBy: [{ fecha: 'desc' }, { id: 'asc' }], skip, take: limit }),
       this.prisma.historicalSale.count({ where }),
     ]);
+    const data = raw.map((v) => ({
+      ...v,
+      gananciaNeta: calcGananciaPorVenta(v.estado, v.precioVenta, v.costoProducto, v.costoEnvio, v.abono),
+      saldoPendiente: v.precioVenta > 0 ? Math.max(0, v.precioVenta - v.abono) : 0,
+    }));
     return { data, total, page, limit, pages: Math.ceil(total / limit) };
   }
 
