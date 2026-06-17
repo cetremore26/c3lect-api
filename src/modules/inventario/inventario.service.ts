@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 const COSTO_ADICIONAL_DEFAULT = 25028;
@@ -8,11 +8,39 @@ export class InventarioService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll() {
-    const items = await this.prisma.inventarioMaestro.findMany({ orderBy: [{ stock: 'desc' }, { modelo: 'asc' }] });
+    const items = await this.prisma.inventarioMaestro.findMany({
+      orderBy: [{ stock: 'desc' }, { modelo: 'asc' }],
+      include: { productos: { select: { id: true, nombre: true, disponible: true } } },
+    });
     return items.map((i) => ({
       ...i,
       capitalItem: i.stock * i.costoUnitario,
     }));
+  }
+
+  /**
+   * Define exactamente qué productos (variantes de color/estilo) consumen este pool de stock.
+   * Reemplaza el set completo: agrega los nuevos y desvincula los que ya no estén en la lista.
+   */
+  async setProductos(id: string, productIds: string[]) {
+    const inv = await this.prisma.inventarioMaestro.findUnique({ where: { id } });
+    if (!inv) throw new NotFoundException(`Item de inventario "${id}" no encontrado`);
+
+    await this.prisma.$transaction([
+      this.prisma.product.updateMany({
+        where: { inventarioId: id, id: { notIn: productIds } },
+        data: { inventarioId: null },
+      }),
+      this.prisma.product.updateMany({
+        where: { id: { in: productIds } },
+        data: { inventarioId: id },
+      }),
+    ]);
+
+    return this.prisma.inventarioMaestro.findUnique({
+      where: { id },
+      include: { productos: { select: { id: true, nombre: true, disponible: true } } },
+    });
   }
 
   async seed() {
