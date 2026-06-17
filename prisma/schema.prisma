@@ -34,6 +34,9 @@ model Product {
   marca               String?
   genero              String?
 
+  inventarioId String?            @map("inventario_id")
+  inventario   InventarioMaestro? @relation(fields: [inventarioId], references: [id], onDelete: SetNull)
+
   @@map("productos")
 }
 
@@ -213,6 +216,8 @@ model InventarioMaestro {
   categoria     String   @default("Reloj")
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
+
+  productos Product[]
 
   @@map("inventario_maestro")
 }

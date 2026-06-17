@@ -61,9 +61,9 @@ export class PreciosService {
     }));
   }
 
-  create(dto: CreatePrecioDto) {
+  async create(dto: CreatePrecioDto) {
     const costoTotal = dto.costoUnitario + dto.costoAdicional;
-    return this.prisma.precioProducto.create({
+    const precio = await this.prisma.precioProducto.create({
       data: {
         modelo: dto.modelo,
         costoUnitario: dto.costoUnitario,
@@ -73,6 +73,10 @@ export class PreciosService {
         precioCierre: dto.precioCierre ?? null,
       },
     });
+    if (dto.precioPublico != null) {
+      await this.syncPrecioPublico(dto.modelo, dto.precioPublico);
+    }
+    return precio;
   }
 
   async update(id: string, dto: UpdatePrecioDto) {
@@ -82,7 +86,7 @@ export class PreciosService {
     const costoUnitario = dto.costoUnitario ?? existing.costoUnitario;
     const costoAdicional = dto.costoAdicional ?? existing.costoAdicional;
 
-    return this.prisma.precioProducto.update({
+    const precio = await this.prisma.precioProducto.update({
       where: { id },
       data: {
         costoUnitario,
@@ -91,6 +95,29 @@ export class PreciosService {
         precioPublico: dto.precioPublico !== undefined ? dto.precioPublico : existing.precioPublico,
         precioCierre: dto.precioCierre !== undefined ? dto.precioCierre : existing.precioCierre,
       },
+    });
+
+    if (dto.precioPublico != null) {
+      await this.syncPrecioPublico(existing.modelo, dto.precioPublico);
+    }
+
+    return precio;
+  }
+
+  /**
+   * El precio público de Precios es el que se muestra y cobra en la tienda.
+   * Se propaga a todas las variantes de producto vinculadas a ese modelo en InventarioMaestro.
+   */
+  private async syncPrecioPublico(modelo: string, precioPublico: number) {
+    const inv = await this.prisma.inventarioMaestro.findUnique({
+      where: { modelo },
+      include: { productos: { select: { id: true } } },
+    });
+    if (!inv || inv.productos.length === 0) return;
+
+    await this.prisma.product.updateMany({
+      where: { id: { in: inv.productos.map((p) => p.id) } },
+      data: { precio: precioPublico },
     });
   }
 
@@ -129,6 +156,7 @@ export class PreciosService {
           precioCierre: p.precioCierre,
         },
       });
+      await this.syncPrecioPublico(p.modelo, p.precioPublico);
       upsertados++;
     }
     return { seeded: upsertados };

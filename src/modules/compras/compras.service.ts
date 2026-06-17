@@ -169,12 +169,23 @@ export class ComprasService {
 
     // Si el modelo cambió, verificar si el modelo viejo quedó sin stock
     if (modeloCambio) {
-      const invViejo = await this.prisma.inventarioMaestro.findUnique({ where: { modelo: existing.modelo } });
+      const invViejo = await this.prisma.inventarioMaestro.findUnique({
+        where: { modelo: existing.modelo },
+        include: { productos: true },
+      });
       if (!invViejo || invViejo.stock <= 0) {
-        await this.prisma.product.updateMany({
-          where: { nombre: { equals: existing.modelo, mode: 'insensitive' }, disponible: true },
-          data: { disponible: false },
-        });
+        const productosViejos = invViejo?.productos ?? (
+          await this.prisma.product.findMany({
+            where: { nombre: { equals: existing.modelo, mode: 'insensitive' } },
+          })
+        );
+        const aDeshabilitar = productosViejos.filter((p) => p.disponible).map((p) => p.id);
+        if (aDeshabilitar.length > 0) {
+          await this.prisma.product.updateMany({
+            where: { id: { in: aDeshabilitar } },
+            data: { disponible: false },
+          });
+        }
       }
     }
 
@@ -187,18 +198,25 @@ export class ComprasService {
   }
 
   /**
-   * Crea un producto stub (pendiente) si no existe, o lo habilita si estaba deshabilitado.
-   * Solo actúa si hay stock disponible.
+   * Crea un producto stub (pendiente) si no existe ninguna variante vinculada, o habilita
+   * las variantes vinculadas si estaban deshabilitadas. Solo actúa si hay stock disponible.
    */
   private async syncProducto(modelo: string, categoria: string, _op: 'create' | 'update') {
-    const inv = await this.prisma.inventarioMaestro.findUnique({ where: { modelo } });
+    const inv = await this.prisma.inventarioMaestro.findUnique({
+      where: { modelo },
+      include: { productos: true },
+    });
     if (!inv || inv.stock <= 0) return;
 
-    const productoExistente = await this.prisma.product.findFirst({
-      where: { nombre: { equals: modelo, mode: 'insensitive' } },
-    });
+    let productos = inv.productos;
+    if (productos.length === 0) {
+      const match = await this.prisma.product.findFirst({
+        where: { nombre: { equals: modelo, mode: 'insensitive' } },
+      });
+      if (match) productos = [match];
+    }
 
-    if (!productoExistente) {
+    if (productos.length === 0) {
       const cat = CAT_MAP[categoria] ?? 'reloj';
       const id  = slugify(modelo);
       try {
@@ -212,17 +230,29 @@ export class ComprasService {
             disponible: false, // pendiente — admin completa datos e imágenes
             cat,
             imgs: [],
+            inventarioId: inv.id,
           },
         });
       } catch {
         // ID duplicado por colisión de slug: ignorar, el producto ya existe con otro nombre similar
       }
-    } else if (!productoExistente.disponible) {
-      // Tenemos stock de nuevo — habilitar producto
-      await this.prisma.product.update({
-        where: { id: productoExistente.id },
-        data: { disponible: true },
-      });
+    } else {
+      // Si el match fue por nombre (sin link aún), lo guardamos para futuras sincronizaciones
+      const sinVincular = productos.filter((p) => p.inventarioId !== inv.id).map((p) => p.id);
+      if (sinVincular.length > 0) {
+        await this.prisma.product.updateMany({
+          where: { id: { in: sinVincular } },
+          data: { inventarioId: inv.id },
+        });
+      }
+      const aHabilitar = productos.filter((p) => !p.disponible).map((p) => p.id);
+      if (aHabilitar.length > 0) {
+        // Tenemos stock de nuevo — habilitar variantes
+        await this.prisma.product.updateMany({
+          where: { id: { in: aHabilitar } },
+          data: { disponible: true },
+        });
+      }
     }
   }
 }
