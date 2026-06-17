@@ -87,24 +87,6 @@ export class ProductsController {
     return product;
   }
 
-  @Post('migrate-curren-ids')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Renombrar IDs de relojes Curren para incluir "curren" en el slug (ADMIN)' })
-  migrarIdsCurren() {
-    return this.productsService.migrarIdsCurren();
-  }
-
-  @Post('cleanup-stubs')
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles('ADMIN')
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Eliminar productos stub vacíos (precio=0, sin imágenes, sin estilo) — ADMIN' })
-  deleteStubs() {
-    return this.productsService.deleteStubs();
-  }
-
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard, RolesGuard)

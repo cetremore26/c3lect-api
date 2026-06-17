@@ -27,12 +27,6 @@ export class PreciosController {
     return this.preciosService.create(dto);
   }
 
-  @Post('seed')
-  @ApiOperation({ summary: 'Poblar tabla de precios con datos del Excel (ADMIN)' })
-  seed() {
-    return this.preciosService.seedFromExcel();
-  }
-
   @Put(':id')
   @ApiOperation({ summary: 'Actualizar precios de un producto (ADMIN)' })
   update(@Param('id') id: string, @Body() dto: UpdatePrecioDto) {
