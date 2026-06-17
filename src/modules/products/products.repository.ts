@@ -15,6 +15,19 @@ export class ProductsRepository {
     });
   }
 
+  async findAllPaginated(where: Prisma.ProductWhereInput, skip: number, take: number) {
+    const [data, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        orderBy: [{ disponible: 'desc' }, { nombre: 'asc' }],
+        skip,
+        take,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+    return { data, total };
+  }
+
   async findById(id: string) {
     const product = await this.prisma.product.findUnique({ where: { id } });
     if (!product) throw new NotFoundException(`Producto "${id}" no encontrado`);
