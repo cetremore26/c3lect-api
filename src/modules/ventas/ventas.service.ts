@@ -40,35 +40,13 @@ export class VentasService {
       data: { stock: { decrement: 1 } },
     });
 
-    // Si el stock llega a 0, deshabilitar todas las variantes vinculadas a este modelo
-    const inv = await this.prisma.inventarioMaestro.findUnique({
-      where: { modelo: dto.modelo },
-      include: { productos: true },
-    });
+    // Si el stock llega a 0, deshabilitar todas las variantes de este modelo (mismo nombre)
+    const inv = await this.prisma.inventarioMaestro.findUnique({ where: { modelo: dto.modelo } });
     if (inv && inv.stock <= 0) {
-      let productos = inv.productos;
-
-      if (productos.length === 0) {
-        // Sin vínculo aún — intentar por nombre y guardar el vínculo para futuras sincronizaciones
-        const match = await this.prisma.product.findFirst({
-          where: { nombre: { equals: dto.modelo, mode: 'insensitive' } },
-        });
-        if (match) {
-          await this.prisma.product.update({
-            where: { id: match.id },
-            data: { inventarioId: inv.id },
-          });
-          productos = [match];
-        }
-      }
-
-      const aDeshabilitar = productos.filter((p) => p.disponible).map((p) => p.id);
-      if (aDeshabilitar.length > 0) {
-        await this.prisma.product.updateMany({
-          where: { id: { in: aDeshabilitar } },
-          data: { disponible: false },
-        });
-      }
+      await this.prisma.product.updateMany({
+        where: { nombre: { equals: dto.modelo, mode: 'insensitive' }, disponible: true },
+        data: { disponible: false },
+      });
     }
 
     await this.audit.log(
