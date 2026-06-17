@@ -9,7 +9,7 @@ import { UpdateProductDto } from './dto/update-product.dto';
 export class ProductsService {
   constructor(private readonly productsRepository: ProductsRepository) {}
 
-  findAll(query: QueryProductDto) {
+  async findAll(query: QueryProductDto) {
     const where: Prisma.ProductWhereInput = {};
 
     if (query.categoria) {
@@ -28,7 +28,19 @@ export class ProductsService {
       where.precio = this.parsePriceRange(query.rangoPrecio);
     }
 
-    return this.productsRepository.findAll(where);
+    if (query.page == null && query.limit == null) {
+      return this.productsRepository.findAll(where);
+    }
+
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+    const skip = (page - 1) * limit;
+    const { data, total } = await this.productsRepository.findAllPaginated(where, skip, limit);
+
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+    };
   }
 
   findOne(id: string) {
