@@ -27,6 +27,13 @@ export class ProductsService {
     if (query.rangoPrecio) {
       where.precio = this.parsePriceRange(query.rangoPrecio);
     }
+    if (query.incompletos) {
+      where.OR = [
+        { precio: 0 },
+        { estilo: '' },
+        { imgs: { equals: [] } },
+      ];
+    }
 
     if (query.page == null && query.limit == null) {
       return this.productsRepository.findAll(where);

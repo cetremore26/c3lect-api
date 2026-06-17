@@ -35,6 +35,12 @@ export class QueryProductDto {
   @IsBoolean()
   soloDisponibles?: boolean;
 
+  @ApiPropertyOptional({ description: 'Solo productos pendientes por completar (sin precio, imágenes o estilo)', example: true })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true')
+  @IsBoolean()
+  incompletos?: boolean;
+
   @ApiPropertyOptional({ description: 'Si se envía, la respuesta queda paginada como { data, meta }', minimum: 1 })
   @IsOptional()
   @Type(() => Number)
