@@ -106,17 +106,11 @@ export class PreciosService {
 
   /**
    * El precio público de Precios es el que se muestra y cobra en la tienda.
-   * Se propaga a todas las variantes de producto vinculadas a ese modelo en InventarioMaestro.
+   * Se propaga a todas las variantes de producto con ese nombre.
    */
   private async syncPrecioPublico(modelo: string, precioPublico: number) {
-    const inv = await this.prisma.inventarioMaestro.findUnique({
-      where: { modelo },
-      include: { productos: { select: { id: true } } },
-    });
-    if (!inv || inv.productos.length === 0) return;
-
     await this.prisma.product.updateMany({
-      where: { id: { in: inv.productos.map((p) => p.id) } },
+      where: { nombre: { equals: modelo, mode: 'insensitive' } },
       data: { precio: precioPublico },
     });
   }
