@@ -17,6 +17,13 @@ export class InventarioService {
     }));
   }
 
+  async stockPublico() {
+    const items = await this.prisma.inventarioMaestro.findMany({
+      select: { modelo: true, stock: true },
+    });
+    return items;
+  }
+
   async seed() {
     const [compras, ventas] = await Promise.all([
       this.prisma.purchase.findMany({

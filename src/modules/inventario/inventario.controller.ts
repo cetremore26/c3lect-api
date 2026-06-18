@@ -7,19 +7,28 @@ import { Roles } from '../../auth/decorators/roles.decorator';
 
 @ApiTags('Inventario')
 @Controller('inventario')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('ADMIN')
-@ApiBearerAuth()
 export class InventarioController {
   constructor(private readonly inventarioService: InventarioService) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Ver inventario maestro con stock y capital (ADMIN)' })
   findAll() {
     return this.inventarioService.findAll();
   }
 
+  @Get('stock')
+  @ApiOperation({ summary: 'Stock disponible por modelo (público) — usado para limitar cantidad en el carrito' })
+  stockPublico() {
+    return this.inventarioService.stockPublico();
+  }
+
   @Post('seed')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Poblar inventario_maestro y calculo_precios desde purchases históricas (ADMIN)' })
   seed() {
     return this.inventarioService.seed();
