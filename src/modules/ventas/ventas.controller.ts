@@ -1,4 +1,4 @@
-import { Body, Controller, Param, Post, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Param, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VentasService } from './ventas.service';
 import { CreateVentaDto } from './dto/create-venta.dto';
@@ -25,5 +25,11 @@ export class VentasController {
   @ApiOperation({ summary: 'Actualizar venta — recalcula saldo, ganancia y auto-cierra si abono >= precio (ADMIN)' })
   update(@Param('id') id: string, @Body() dto: UpdateVentaDto) {
     return this.ventasService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Eliminar venta — revierte el descuento de inventario (ADMIN)' })
+  remove(@Param('id') id: string) {
+    return this.ventasService.remove(id);
   }
 }

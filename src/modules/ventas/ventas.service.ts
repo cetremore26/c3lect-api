@@ -100,4 +100,33 @@ export class VentasService {
 
     return venta;
   }
+
+  async remove(id: string) {
+    const existing = await this.prisma.historicalSale.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException(`Venta ${id} no encontrada`);
+
+    await this.prisma.historicalSale.delete({ where: { id } });
+
+    // Revertir el descuento de inventario que se aplicó al registrar la venta
+    await this.prisma.inventarioMaestro.updateMany({
+      where: { modelo: existing.modelo },
+      data: { stock: { increment: 1 } },
+    });
+
+    // Si el stock vuelve a ser positivo, re-habilitar las variantes de este modelo
+    const inv = await this.prisma.inventarioMaestro.findUnique({ where: { modelo: existing.modelo } });
+    if (inv && inv.stock > 0) {
+      await this.prisma.product.updateMany({
+        where: { nombre: { equals: existing.modelo, mode: 'insensitive' }, disponible: false },
+        data: { disponible: true },
+      });
+    }
+
+    await this.audit.log(
+      'ELIMINAR', 'venta', id,
+      `Venta eliminada: ${existing.modelo} — ${existing.cliente}`,
+    );
+
+    return { mensaje: 'Venta eliminada correctamente' };
+  }
 }
