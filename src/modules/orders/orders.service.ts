@@ -190,7 +190,7 @@ export class OrdersService {
   async updateStatus(id: string, dto: UpdateOrderStatusDto, adminId: string) {
     const order = await this.prisma.order.findUnique({
       where: { id },
-      include: { shippingInfo: true, user: true },
+      include: { shippingInfo: true, user: true, items: true },
     });
     if (!order) throw new NotFoundException('Pedido no encontrado.');
 
@@ -201,20 +201,53 @@ export class OrdersService {
       );
     }
 
-    await this.prisma.$transaction([
-      this.prisma.order.update({
+    // El stock solo se descuenta al confirmar (PENDIENTE→CONFIRMADO) y solo se
+    // restablece si se cancela un pedido que ya lo había descontado (es decir,
+    // que pasó por CONFIRMADO). Cancelar desde PENDIENTE nunca tocó el stock.
+    const seConfirma = order.status === EstadoPedido.PENDIENTE && dto.status === EstadoPedido.CONFIRMADO;
+    const seCancelaConStockDescontado =
+      dto.status === EstadoPedido.CANCELADO && order.status !== EstadoPedido.PENDIENTE;
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.order.update({
         where: { id },
         data: { status: dto.status },
-      }),
-      this.prisma.orderStatusHistory.create({
+      });
+      await tx.orderStatusHistory.create({
         data: {
           orderId: id,
           statusAnterior: order.status,
           statusNuevo: dto.status,
           changedBy: adminId,
         },
-      }),
-    ]);
+      });
+
+      if (seConfirma || seCancelaConStockDescontado) {
+        const signo = seConfirma ? -1 : 1;
+        for (const item of order.items) {
+          const inv = await tx.inventarioMaestro.findFirst({
+            where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
+          });
+          if (!inv) continue; // producto no rastreado en inventario maestro
+
+          if (signo < 0 && inv.stock < item.cantidad) {
+            throw new BadRequestException(
+              `Stock insuficiente para "${item.nombre}" (disponible: ${inv.stock}, solicitado: ${item.cantidad}).`,
+            );
+          }
+
+          const nuevoStock = Math.max(0, inv.stock + signo * item.cantidad);
+          await tx.inventarioMaestro.update({
+            where: { id: inv.id },
+            data: { stock: nuevoStock },
+          });
+          await tx.product.updateMany({
+            where: { nombre: { equals: item.nombre, mode: 'insensitive' } },
+            data: { disponible: nuevoStock > 0 },
+          });
+        }
+      }
+    });
 
     const email = order.shippingInfo?.email;
     const nombre = order.shippingInfo?.nombreCompleto ?? order.user?.nombre ?? 'Cliente';
