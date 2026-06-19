@@ -105,6 +105,12 @@ export class VentasService {
     const existing = await this.prisma.historicalSale.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException(`Venta ${id} no encontrada`);
 
+    // TODO: si existing.orderId está presente, esta venta fue generada por
+    // OrdersService.updateStatus() al confirmar un pedido de la plataforma.
+    // Borrarla aquí manualmente revierte el stock OTRA VEZ, independiente de
+    // lo que ya hizo OrdersService — puede descontar el stock dos veces si el
+    // pedido también se cancela/elimina después. Falta decidir si se bloquea
+    // este endpoint para ventas con orderId, o se redirige al flujo de pedidos.
     await this.prisma.historicalSale.delete({ where: { id } });
 
     // Revertir el descuento de inventario que se aplicó al registrar la venta
