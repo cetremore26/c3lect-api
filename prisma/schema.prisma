@@ -116,6 +116,7 @@ enum MetodoPago {
   TARJETA_DEBITO
   NEQUI
   DAVIPLATA
+  MERCADOPAGO
 }
 
 enum EstadoPago {
@@ -136,11 +137,12 @@ model Order {
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
-  user          User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
-  items         OrderItem[]
-  shippingInfo  ShippingInfo?
-  statusHistory OrderStatusHistory[]
-  payments      Payment[]
+  user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
+  shippingInfo    ShippingInfo?
+  statusHistory   OrderStatusHistory[]
+  payments        Payment[]
+  historicalSales HistoricalSale[]
 
   @@map("orders")
 }
@@ -235,6 +237,7 @@ model PrecioProducto {
 
 model HistoricalSale {
   id             String   @id @default(uuid())
+  orderId        String?  @map("order_id")
   fecha          DateTime @db.Date
   cliente        String
   celular        String?
@@ -249,6 +252,8 @@ model HistoricalSale {
   fuente         String?
   estado         String
   createdAt      DateTime @default(now()) @map("created_at")
+
+  order Order? @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@map("historical_sales")
 }

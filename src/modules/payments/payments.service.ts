@@ -11,6 +11,7 @@ import { MercadoPagoConfig, Preference, Payment as MpPayment } from 'mercadopago
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
+import { OrdersService } from '../orders/orders.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { WebhookPaymentDto } from './dto/webhook-payment.dto';
 
@@ -39,6 +40,7 @@ export class PaymentsService {
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
     private readonly config: ConfigService,
+    private readonly ordersService: OrdersService,
   ) {}
 
   // ─── Create payment preference ───────────────────────────────────────────────
@@ -192,20 +194,27 @@ export class PaymentsService {
     });
     if (!order || order.status !== EstadoPedido.PENDIENTE) return;
 
-    await this.prisma.$transaction([
-      this.prisma.order.update({
-        where: { id: order.id },
-        data: { status: EstadoPedido.CONFIRMADO },
-      }),
-      this.prisma.orderStatusHistory.create({
-        data: {
-          orderId: order.id,
-          statusAnterior: order.status,
-          statusNuevo: EstadoPedido.CONFIRMADO,
-          changedBy: 'MERCADOPAGO',
-        },
-      }),
-    ]);
+    try {
+      // skipStatusEmail=true: ya enviamos un comprobante con PDF más abajo,
+      // no hace falta duplicar con el email genérico de cambio de estado.
+      await this.ordersService.updateStatus(
+        order.id,
+        { status: EstadoPedido.CONFIRMADO },
+        'MERCADOPAGO',
+        true,
+      );
+    } catch (err) {
+      // El dinero ya lo cobró MercadoPago — no podemos revertir eso. Si falló
+      // por falta de stock, el pedido queda en PENDIENTE y un admin debe
+      // resolverlo manualmente (reabastecer y confirmar, o reembolsar).
+      this.logger.error(`Pago aprobado pero no se pudo confirmar el pedido ${orderNumber}`, err);
+      const adminEmail = this.config.get<string>('ADMIN_EMAIL');
+      if (adminEmail) {
+        const detalle = err instanceof Error ? err.message : String(err);
+        void this.mail.sendStockAlert(adminEmail, orderNumber, detalle);
+      }
+      return;
+    }
 
     const pdfBuffer = await this.generateVoucher(order);
 
@@ -232,35 +241,16 @@ export class PaymentsService {
   }
 
   private async handleRejected(orderNumber: string): Promise<void> {
-    const order = await this.prisma.order.findUnique({
-      where: { orderNumber },
-      include: { shippingInfo: true },
-    });
+    const order = await this.prisma.order.findUnique({ where: { orderNumber } });
     if (!order || order.status !== EstadoPedido.PENDIENTE) return;
 
-    await this.prisma.$transaction([
-      this.prisma.order.update({
-        where: { id: order.id },
-        data: { status: EstadoPedido.CANCELADO },
-      }),
-      this.prisma.orderStatusHistory.create({
-        data: {
-          orderId: order.id,
-          statusAnterior: order.status,
-          statusNuevo: EstadoPedido.CANCELADO,
-          changedBy: 'MERCADOPAGO',
-        },
-      }),
-    ]);
-
-    if (order.shippingInfo) {
-      void this.mail.sendOrderStatusUpdate(
-        order.shippingInfo.email,
-        order.shippingInfo.nombreCompleto,
-        order.orderNumber,
-        'CANCELADO',
-      );
-    }
+    // Pedido nunca confirmado: PENDIENTE→CANCELADO no toca stock ni ventas.
+    // updateStatus ya envía el email de cambio de estado al cliente.
+    await this.ordersService.updateStatus(
+      order.id,
+      { status: EstadoPedido.CANCELADO },
+      'MERCADOPAGO',
+    );
   }
 
   private verifySignature(

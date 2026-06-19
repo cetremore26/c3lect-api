@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
 import { AuditService } from '../audit/audit.service';
+import { calcGananciaPorVenta } from '../metrics/metrics.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
@@ -71,6 +72,20 @@ export class OrdersService {
         subtotal: product.precio * item.cantidad,
       };
     });
+
+    // Verificación best-effort: evita que el cliente alcance a pagar por algo
+    // evidentemente agotado. El guard autoritativo sigue siendo el de updateStatus,
+    // que vuelve a revisar el stock justo antes de confirmar.
+    for (const item of itemsData) {
+      const inv = await this.prisma.inventarioMaestro.findFirst({
+        where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
+      });
+      if (inv && inv.stock < item.cantidad) {
+        throw new BadRequestException(
+          `Stock insuficiente para "${item.nombre}" (disponible: ${inv.stock}, solicitado: ${item.cantidad}).`,
+        );
+      }
+    }
 
     const subtotal = itemsData.reduce((sum, i) => sum + i.subtotal, 0);
     const total = subtotal;
@@ -187,7 +202,12 @@ export class OrdersService {
     return order;
   }
 
-  async updateStatus(id: string, dto: UpdateOrderStatusDto, adminId: string) {
+  async updateStatus(
+    id: string,
+    dto: UpdateOrderStatusDto,
+    adminId: string,
+    skipStatusEmail = false,
+  ) {
     const order = await this.prisma.order.findUnique({
       where: { id },
       include: { shippingInfo: true, user: true, items: true },
@@ -201,9 +221,10 @@ export class OrdersService {
       );
     }
 
-    // El stock solo se descuenta al confirmar (PENDIENTE→CONFIRMADO) y solo se
-    // restablece si se cancela un pedido que ya lo había descontado (es decir,
-    // que pasó por CONFIRMADO). Cancelar desde PENDIENTE nunca tocó el stock.
+    // El stock y las ventas solo se generan al confirmar (PENDIENTE→CONFIRMADO)
+    // y solo se revierten si se cancela un pedido que ya los había generado
+    // (es decir, que pasó por CONFIRMADO). Cancelar desde PENDIENTE nunca tocó
+    // ni stock ni ventas.
     const seConfirma = order.status === EstadoPedido.PENDIENTE && dto.status === EstadoPedido.CONFIRMADO;
     const seCancelaConStockDescontado =
       dto.status === EstadoPedido.CANCELADO && order.status !== EstadoPedido.PENDIENTE;
@@ -222,21 +243,61 @@ export class OrdersService {
         },
       });
 
-      if (seConfirma || seCancelaConStockDescontado) {
-        const signo = seConfirma ? -1 : 1;
+      if (seConfirma) {
         for (const item of order.items) {
           const inv = await tx.inventarioMaestro.findFirst({
             where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
           });
           if (!inv) continue; // producto no rastreado en inventario maestro
 
-          if (signo < 0 && inv.stock < item.cantidad) {
+          if (inv.stock < item.cantidad) {
             throw new BadRequestException(
               `Stock insuficiente para "${item.nombre}" (disponible: ${inv.stock}, solicitado: ${item.cantidad}).`,
             );
           }
 
-          const nuevoStock = Math.max(0, inv.stock + signo * item.cantidad);
+          const nuevoStock = Math.max(0, inv.stock - item.cantidad);
+          await tx.inventarioMaestro.update({
+            where: { id: inv.id },
+            data: { stock: nuevoStock },
+          });
+          await tx.product.updateMany({
+            where: { nombre: { equals: item.nombre, mode: 'insensitive' } },
+            data: { disponible: nuevoStock > 0 },
+          });
+
+          // Una fila de venta por unidad, igual que el registro manual.
+          const gananciaNeta = calcGananciaPorVenta(
+            'Pagado', item.precioUnitario, inv.costoUnitario, 0, item.precioUnitario,
+          );
+          await tx.historicalSale.createMany({
+            data: Array.from({ length: item.cantidad }, () => ({
+              orderId: order.id,
+              fecha: new Date(),
+              cliente: order.shippingInfo?.nombreCompleto ?? order.user?.nombre ?? 'Cliente',
+              celular: order.shippingInfo?.telefono,
+              modelo: item.nombre,
+              precioVenta: item.precioUnitario,
+              costoProducto: inv.costoUnitario,
+              costoEnvio: 0,
+              abono: item.precioUnitario,
+              saldoPendiente: 0,
+              gananciaNeta,
+              fuente: 'Plataforma',
+              estado: 'Pagado',
+            })),
+          });
+        }
+      } else if (seCancelaConStockDescontado) {
+        await tx.historicalSale.deleteMany({ where: { orderId: order.id } });
+
+        for (const item of order.items) {
+          const inv = await tx.inventarioMaestro.findFirst({
+            where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
+          });
+          if (!inv) continue;
+
+          const nuevoStock = inv.stock + item.cantidad;
           await tx.inventarioMaestro.update({
             where: { id: inv.id },
             data: { stock: nuevoStock },
@@ -251,7 +312,7 @@ export class OrdersService {
 
     const email = order.shippingInfo?.email;
     const nombre = order.shippingInfo?.nombreCompleto ?? order.user?.nombre ?? 'Cliente';
-    if (email) {
+    if (email && !skipStatusEmail) {
       void this.mail.sendOrderStatusUpdate(email, nombre, order.orderNumber, dto.status);
     }
 
