@@ -287,7 +287,7 @@ model Expense {
 
 model Payment {
   id           String     @id @default(uuid())
-  orderId      String     @map("order_id")
+  orderId      String?    @map("order_id")
   orderNumber  String     @map("order_number")
   userId       String?    @map("user_id")
   estado       EstadoPago @default(PENDIENTE)
@@ -295,10 +295,13 @@ model Payment {
   mpPaymentId  String?    @map("mp_payment_id")
   checkoutUrl  String?    @map("checkout_url")
   total        Int
+  draftPayload Json?      @map("draft_payload")
   createdAt    DateTime   @default(now()) @map("created_at")
   updatedAt    DateTime   @updatedAt @map("updated_at")
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order Order? @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderNumber])
 
   @@map("payments")
 }

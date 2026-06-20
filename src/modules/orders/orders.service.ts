@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { EstadoPedido } from '@prisma/client';
+import { EstadoPedido, MetodoPago, Prisma } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
@@ -30,12 +30,26 @@ function randomSuffix(len: number): string {
     .join('');
 }
 
-function buildOrderNumber(): string {
+export function buildOrderNumber(): string {
   const now = new Date();
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, '0');
   const d = String(now.getDate()).padStart(2, '0');
   return `C3L-${y}${m}${d}-${randomSuffix(5)}`;
+}
+
+interface ResolvedItem {
+  productId: string;
+  nombre: string;
+  precioUnitario: number;
+  cantidad: number;
+  subtotal: number;
+}
+
+interface ResolvedItems {
+  itemsData: ResolvedItem[];
+  subtotal: number;
+  total: number;
 }
 
 @Injectable()
@@ -47,8 +61,12 @@ export class OrdersService {
     private readonly audit: AuditService,
   ) {}
 
-  async createOrder(dto: CreateOrderDto, userId?: string) {
-    const productIds = dto.items.map((i) => i.productId);
+  // Resuelve precios server-side (nunca confía en lo que envía el cliente) y
+  // hace una verificación best-effort de stock. El guard autoritativo sigue
+  // siendo el de aplicarConfirmacion, que vuelve a revisar el stock justo
+  // antes de confirmar/materializar el pedido.
+  async resolveItems(items: { productId: string; cantidad: number }[]): Promise<ResolvedItems> {
+    const productIds = items.map((i) => i.productId);
     const products = await this.prisma.product.findMany({
       where: { id: { in: productIds }, disponible: true },
     });
@@ -62,7 +80,7 @@ export class OrdersService {
     }
 
     const productMap = new Map(products.map((p) => [p.id, p]));
-    const itemsData = dto.items.map((item) => {
+    const itemsData = items.map((item) => {
       const product = productMap.get(item.productId)!;
       return {
         productId: item.productId,
@@ -73,9 +91,6 @@ export class OrdersService {
       };
     });
 
-    // Verificación best-effort: evita que el cliente alcance a pagar por algo
-    // evidentemente agotado. El guard autoritativo sigue siendo el de updateStatus,
-    // que vuelve a revisar el stock justo antes de confirmar.
     for (const item of itemsData) {
       const inv = await this.prisma.inventarioMaestro.findFirst({
         where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
@@ -88,7 +103,11 @@ export class OrdersService {
     }
 
     const subtotal = itemsData.reduce((sum, i) => sum + i.subtotal, 0);
-    const total = subtotal;
+    return { itemsData, subtotal, total: subtotal };
+  }
+
+  async createOrder(dto: CreateOrderDto, userId?: string) {
+    const { itemsData, subtotal, total } = await this.resolveItems(dto.items);
     const orderNumber = buildOrderNumber();
 
     const order = await this.prisma.$transaction(async (tx) => {
@@ -244,69 +263,15 @@ export class OrdersService {
       });
 
       if (seConfirma) {
-        for (const item of order.items) {
-          const inv = await tx.inventarioMaestro.findFirst({
-            where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
-          });
-          if (!inv) continue; // producto no rastreado en inventario maestro
-
-          if (inv.stock < item.cantidad) {
-            throw new BadRequestException(
-              `Stock insuficiente para "${item.nombre}" (disponible: ${inv.stock}, solicitado: ${item.cantidad}).`,
-            );
-          }
-
-          const nuevoStock = Math.max(0, inv.stock - item.cantidad);
-          await tx.inventarioMaestro.update({
-            where: { id: inv.id },
-            data: { stock: nuevoStock },
-          });
-          await tx.product.updateMany({
-            where: { nombre: { equals: item.nombre, mode: 'insensitive' } },
-            data: { disponible: nuevoStock > 0 },
-          });
-
-          // Una fila de venta por unidad, igual que el registro manual.
-          const gananciaNeta = calcGananciaPorVenta(
-            'Pagado', item.precioUnitario, inv.costoUnitario, 0, item.precioUnitario,
-          );
-          await tx.historicalSale.createMany({
-            data: Array.from({ length: item.cantidad }, () => ({
-              orderId: order.id,
-              fecha: new Date(),
-              cliente: order.shippingInfo?.nombreCompleto ?? order.user?.nombre ?? 'Cliente',
-              celular: order.shippingInfo?.telefono,
-              modelo: item.nombre,
-              precioVenta: item.precioUnitario,
-              costoProducto: inv.costoUnitario,
-              costoEnvio: 0,
-              abono: item.precioUnitario,
-              saldoPendiente: 0,
-              gananciaNeta,
-              fuente: 'Plataforma',
-              estado: 'Pagado',
-            })),
-          });
-        }
+        await this.aplicarConfirmacion(
+          tx,
+          order.id,
+          order.items,
+          order.shippingInfo?.nombreCompleto ?? order.user?.nombre ?? 'Cliente',
+          order.shippingInfo?.telefono,
+        );
       } else if (seCancelaConStockDescontado) {
-        await tx.historicalSale.deleteMany({ where: { orderId: order.id } });
-
-        for (const item of order.items) {
-          const inv = await tx.inventarioMaestro.findFirst({
-            where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
-          });
-          if (!inv) continue;
-
-          const nuevoStock = inv.stock + item.cantidad;
-          await tx.inventarioMaestro.update({
-            where: { id: inv.id },
-            data: { stock: nuevoStock },
-          });
-          await tx.product.updateMany({
-            where: { nombre: { equals: item.nombre, mode: 'insensitive' } },
-            data: { disponible: nuevoStock > 0 },
-          });
-        }
+        await this.revertirConfirmacion(tx, order.id, order.items);
       }
     });
 
@@ -330,5 +295,146 @@ export class OrdersService {
       where: { userId: null, shippingInfo: { email } },
       data: { userId },
     });
+  }
+
+  // Crea el pedido directamente en CONFIRMADO (sin pasar por PENDIENTE) y le
+  // aplica el mismo descuento de stock + creación de ventas que una
+  // confirmación normal. Lo usa el flujo de MercadoPago: el pedido solo
+  // existe una vez que el webhook avisa que el pago fue aprobado — nunca
+  // antes — así que no tiene sentido un estado PENDIENTE intermedio.
+  async createConfirmedOrder(params: {
+    orderNumber: string;
+    itemsData: ResolvedItem[];
+    subtotal: number;
+    total: number;
+    shippingInfo: CreateOrderDto['shippingInfo'];
+    userId?: string | null;
+  }) {
+    const { orderNumber, itemsData, subtotal, total, shippingInfo, userId } = params;
+
+    const order = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.order.create({
+        data: {
+          orderNumber,
+          userId: userId ?? null,
+          subtotal,
+          total,
+          paymentMethod: MetodoPago.MERCADOPAGO,
+          status: EstadoPedido.CONFIRMADO,
+          items: { create: itemsData },
+          shippingInfo: { create: shippingInfo },
+          statusHistory: {
+            create: {
+              statusAnterior: null,
+              statusNuevo: EstadoPedido.CONFIRMADO,
+              changedBy: 'MERCADOPAGO',
+            },
+          },
+        },
+        include: {
+          items: true,
+          shippingInfo: true,
+          statusHistory: { orderBy: { createdAt: 'asc' } },
+        },
+      });
+
+      await this.aplicarConfirmacion(
+        tx,
+        created.id,
+        created.items,
+        shippingInfo.nombreCompleto,
+        shippingInfo.telefono,
+      );
+
+      return created;
+    });
+
+    void this.audit.log(
+      'ESTADO', 'pedido', order.id,
+      `Pedido ${order.orderNumber}: creado y confirmado vía MercadoPago`,
+      'MERCADOPAGO',
+    );
+
+    return order;
+  }
+
+  // Descuenta stock y crea una fila de venta por unidad (fuente "Plataforma"),
+  // igual que el registro manual. Se asume pago completo: o ya aprobó
+  // MercadoPago, o el admin confirma a mano tras cobrar contra entrega.
+  private async aplicarConfirmacion(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    items: { nombre: string; cantidad: number; precioUnitario: number }[],
+    cliente: string,
+    celular: string | null | undefined,
+  ): Promise<void> {
+    for (const item of items) {
+      const inv = await tx.inventarioMaestro.findFirst({
+        where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
+      });
+      if (!inv) continue; // producto no rastreado en inventario maestro
+
+      if (inv.stock < item.cantidad) {
+        throw new BadRequestException(
+          `Stock insuficiente para "${item.nombre}" (disponible: ${inv.stock}, solicitado: ${item.cantidad}).`,
+        );
+      }
+
+      const nuevoStock = Math.max(0, inv.stock - item.cantidad);
+      await tx.inventarioMaestro.update({
+        where: { id: inv.id },
+        data: { stock: nuevoStock },
+      });
+      await tx.product.updateMany({
+        where: { nombre: { equals: item.nombre, mode: 'insensitive' } },
+        data: { disponible: nuevoStock > 0 },
+      });
+
+      const gananciaNeta = calcGananciaPorVenta(
+        'Pagado', item.precioUnitario, inv.costoUnitario, 0, item.precioUnitario,
+      );
+      await tx.historicalSale.createMany({
+        data: Array.from({ length: item.cantidad }, () => ({
+          orderId,
+          fecha: new Date(),
+          cliente,
+          celular: celular ?? null,
+          modelo: item.nombre,
+          precioVenta: item.precioUnitario,
+          costoProducto: inv.costoUnitario,
+          costoEnvio: 0,
+          abono: item.precioUnitario,
+          saldoPendiente: 0,
+          gananciaNeta,
+          fuente: 'Plataforma',
+          estado: 'Pagado',
+        })),
+      });
+    }
+  }
+
+  private async revertirConfirmacion(
+    tx: Prisma.TransactionClient,
+    orderId: string,
+    items: { nombre: string; cantidad: number }[],
+  ): Promise<void> {
+    await tx.historicalSale.deleteMany({ where: { orderId } });
+
+    for (const item of items) {
+      const inv = await tx.inventarioMaestro.findFirst({
+        where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
+      });
+      if (!inv) continue;
+
+      const nuevoStock = inv.stock + item.cantidad;
+      await tx.inventarioMaestro.update({
+        where: { id: inv.id },
+        data: { stock: nuevoStock },
+      });
+      await tx.product.updateMany({
+        where: { nombre: { equals: item.nombre, mode: 'insensitive' } },
+        data: { disponible: nuevoStock > 0 },
+      });
+    }
   }
 }

@@ -5,15 +5,24 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { EstadoPago, EstadoPedido } from '@prisma/client';
+import { EstadoPago, EstadoPedido, Payment } from '@prisma/client';
 import { createHmac } from 'crypto';
 import { MercadoPagoConfig, Preference, Payment as MpPayment } from 'mercadopago';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
-import { OrdersService } from '../orders/orders.service';
+import { OrdersService, buildOrderNumber } from '../orders/orders.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { CreatePendingPaymentDto } from './dto/create-pending-payment.dto';
 import { WebhookPaymentDto } from './dto/webhook-payment.dto';
+
+interface DraftPayload {
+  itemsData: { productId: string; nombre: string; precioUnitario: number; cantidad: number; subtotal: number }[];
+  subtotal: number;
+  total: number;
+  shippingInfo: { nombreCompleto: string; email: string; telefono: string; ciudad: string; departamento: string; direccion: string; notas?: string };
+  userId: string | null;
+}
 
 // Removes diacritics so standard PDF fonts (WinAnsi) render all chars correctly
 function pdfSafe(text: string): string {
@@ -108,6 +117,75 @@ export class PaymentsService {
     };
   }
 
+  // ─── Create payment preference SIN crear el pedido todavía ───────────────────
+  // El pedido solo se materializa cuando el webhook confirma el pago aprobado
+  // (ver handleApproved). Así un pago abandonado/rechazado/fallido en MercadoPago
+  // nunca deja un pedido huérfano en PENDIENTE.
+
+  async createPendingOrderPayment(dto: CreatePendingPaymentDto, userId?: string) {
+    const { itemsData, subtotal, total } = await this.ordersService.resolveItems(dto.items);
+    const orderNumber = buildOrderNumber();
+
+    const accessToken = this.config.getOrThrow<string>('MP_ACCESS_TOKEN');
+    const frontendUrl = this.config.getOrThrow<string>('FRONTEND_URL');
+    const apiUrl = this.config.getOrThrow<string>('API_URL');
+
+    const mpClient = new MercadoPagoConfig({ accessToken });
+    const preference = new Preference(mpClient);
+
+    const prefResult = await preference.create({
+      body: {
+        items: itemsData.map((item) => ({
+          id: item.productId,
+          title: item.nombre,
+          quantity: item.cantidad,
+          unit_price: item.precioUnitario,
+          currency_id: 'COP',
+        })),
+        payer: {
+          email: dto.shippingInfo.email,
+        },
+        external_reference: orderNumber,
+        back_urls: {
+          success: `${frontendUrl}/checkout/success`,
+          failure: `${frontendUrl}/checkout/failure`,
+          pending: `${frontendUrl}/checkout/pending`,
+        },
+        notification_url: `${apiUrl}/payments/webhook`,
+        statement_descriptor: 'C3LECT',
+      },
+    });
+
+    const checkoutUrl = prefResult.sandbox_init_point ?? prefResult.init_point ?? '';
+
+    const draftPayload: DraftPayload = {
+      itemsData,
+      subtotal,
+      total,
+      shippingInfo: dto.shippingInfo,
+      userId: userId ?? null,
+    };
+
+    const payment = await this.prisma.payment.create({
+      data: {
+        orderId: null,
+        orderNumber,
+        userId: userId ?? null,
+        estado: EstadoPago.PENDIENTE,
+        preferenceId: prefResult.id ?? null,
+        checkoutUrl,
+        total,
+        draftPayload: draftPayload as unknown as object,
+      },
+    });
+
+    return {
+      checkoutUrl,
+      preferenceId: prefResult.id,
+      paymentId: payment.id,
+    };
+  }
+
   // ─── Handle MP webhook ────────────────────────────────────────────────────────
 
   async handleWebhook(
@@ -139,7 +217,6 @@ export class PaymentsService {
         return;
       }
 
-      // Find our payment record and skip if already in terminal state
       const existingPayment = await this.prisma.payment.findFirst({
         where: { orderNumber },
         orderBy: { createdAt: 'desc' },
@@ -148,26 +225,29 @@ export class PaymentsService {
         this.logger.warn(`No payment record found for order ${orderNumber}`);
         return;
       }
-      if (
-        existingPayment.estado === EstadoPago.APROBADO ||
-        existingPayment.estado === EstadoPago.RECHAZADO ||
-        existingPayment.estado === EstadoPago.CANCELADO
-      ) {
-        return; // idempotent — already processed
-      }
 
-      await this.prisma.payment.update({
-        where: { id: existingPayment.id },
+      // Actualización condicional atómica: MercadoPago reintenta la entrega
+      // del webhook, así que dos entregas casi simultáneas podrían leer el
+      // mismo estado "no terminal" y ambas intentar procesar el pago. Solo
+      // la entrega que efectivamente cambia el estado (count===1) continúa;
+      // si otra ya lo dejó en estado terminal, count=0 y no hacemos nada más
+      // — evita crear dos pedidos para un solo pago.
+      const { count } = await this.prisma.payment.updateMany({
+        where: {
+          id: existingPayment.id,
+          estado: { notIn: [EstadoPago.APROBADO, EstadoPago.RECHAZADO, EstadoPago.CANCELADO] },
+        },
         data: { estado: nuevoEstado, mpPaymentId: String(dto.data.id) },
       });
+      if (count === 0) return; // ya procesado por otra entrega del webhook
 
       if (nuevoEstado === EstadoPago.APROBADO) {
-        await this.handleApproved(orderNumber);
+        await this.handleApproved(orderNumber, existingPayment);
       } else if (
         nuevoEstado === EstadoPago.RECHAZADO ||
         nuevoEstado === EstadoPago.CANCELADO
       ) {
-        await this.handleRejected(orderNumber);
+        await this.handleRejected(orderNumber, existingPayment);
       }
     } catch (err) {
       this.logger.error('Error processing webhook', err);
@@ -187,33 +267,76 @@ export class PaymentsService {
 
   // ─── Private helpers ──────────────────────────────────────────────────────────
 
-  private async handleApproved(orderNumber: string): Promise<void> {
-    const order = await this.prisma.order.findUnique({
-      where: { orderNumber },
-      include: { items: true, shippingInfo: true },
-    });
-    if (!order || order.status !== EstadoPedido.PENDIENTE) return;
+  private async handleApproved(orderNumber: string, payment: Payment): Promise<void> {
+    let order: { id: string; orderNumber: string; total: number; shippingInfo: { email: string; nombreCompleto: string } | null; items: { nombre: string; cantidad: number; precioUnitario: number; subtotal: number }[] };
 
-    try {
-      // skipStatusEmail=true: ya enviamos un comprobante con PDF más abajo,
-      // no hace falta duplicar con el email genérico de cambio de estado.
-      await this.ordersService.updateStatus(
-        order.id,
-        { status: EstadoPedido.CONFIRMADO },
-        'MERCADOPAGO',
-        true,
-      );
-    } catch (err) {
-      // El dinero ya lo cobró MercadoPago — no podemos revertir eso. Si falló
-      // por falta de stock, el pedido queda en PENDIENTE y un admin debe
-      // resolverlo manualmente (reabastecer y confirmar, o reembolsar).
-      this.logger.error(`Pago aprobado pero no se pudo confirmar el pedido ${orderNumber}`, err);
-      const adminEmail = this.config.get<string>('ADMIN_EMAIL');
-      if (adminEmail) {
-        const detalle = err instanceof Error ? err.message : String(err);
-        void this.mail.sendStockAlert(adminEmail, orderNumber, detalle);
+    if (payment.orderId) {
+      // Compatibilidad con el flujo viejo (POST /payments/create sobre un
+      // pedido que ya existía como PENDIENTE) — ya no lo usa el frontend,
+      // pero se deja vivo por si se genera un link de pago para un pedido
+      // existente en el futuro.
+      const existing = await this.prisma.order.findUnique({
+        where: { id: payment.orderId },
+        include: { items: true, shippingInfo: true },
+      });
+      if (!existing || existing.status !== EstadoPedido.PENDIENTE) return;
+
+      try {
+        // skipStatusEmail=true: ya enviamos un comprobante con PDF más abajo.
+        await this.ordersService.updateStatus(
+          existing.id,
+          { status: EstadoPedido.CONFIRMADO },
+          'MERCADOPAGO',
+          true,
+        );
+      } catch (err) {
+        this.logger.error(`Pago aprobado pero no se pudo confirmar el pedido ${orderNumber}`, err);
+        const adminEmail = this.config.get<string>('ADMIN_EMAIL');
+        if (adminEmail) {
+          const detalle = err instanceof Error ? err.message : String(err);
+          void this.mail.sendStockAlert(adminEmail, orderNumber, detalle);
+        }
+        return;
       }
-      return;
+      order = existing;
+    } else {
+      // Flujo nuevo: el pedido no existía todavía. Se crea ya CONFIRMADO,
+      // con el mismo descuento de stock + creación de ventas que cualquier
+      // otra confirmación, a partir de los datos congelados en draftPayload.
+      const draft = payment.draftPayload as unknown as DraftPayload | null;
+      if (!draft) {
+        this.logger.error(`Payment ${payment.id} aprobado sin draftPayload — no se puede crear el pedido`);
+        return;
+      }
+
+      try {
+        const created = await this.ordersService.createConfirmedOrder({
+          orderNumber,
+          itemsData: draft.itemsData,
+          subtotal: draft.subtotal,
+          total: draft.total,
+          shippingInfo: draft.shippingInfo,
+          userId: draft.userId,
+        });
+        order = created;
+      } catch (err) {
+        // El dinero ya lo cobró MercadoPago — no podemos revertir eso. Si
+        // falló por falta de stock, no queda ningún pedido creado y un admin
+        // debe resolverlo manualmente (reabastecer y crear el pedido a mano,
+        // o reembolsar).
+        this.logger.error(`Pago aprobado pero no se pudo crear el pedido ${orderNumber}`, err);
+        const adminEmail = this.config.get<string>('ADMIN_EMAIL');
+        if (adminEmail) {
+          const detalle = err instanceof Error ? err.message : String(err);
+          void this.mail.sendStockAlert(adminEmail, orderNumber, detalle);
+        }
+        return;
+      }
+
+      await this.prisma.payment.update({
+        where: { id: payment.id },
+        data: { orderId: order.id },
+      });
     }
 
     const pdfBuffer = await this.generateVoucher(order);
@@ -240,12 +363,17 @@ export class PaymentsService {
     }
   }
 
-  private async handleRejected(orderNumber: string): Promise<void> {
-    const order = await this.prisma.order.findUnique({ where: { orderNumber } });
+  private async handleRejected(orderNumber: string, payment: Payment): Promise<void> {
+    if (!payment.orderId) {
+      // Flujo nuevo: nunca existió un pedido — no hay nada que cancelar.
+      // El Payment ya quedó marcado RECHAZADO/CANCELADO antes de llegar aquí.
+      return;
+    }
+
+    // Compatibilidad con el flujo viejo: el pedido ya existía como PENDIENTE.
+    const order = await this.prisma.order.findUnique({ where: { id: payment.orderId } });
     if (!order || order.status !== EstadoPedido.PENDIENTE) return;
 
-    // Pedido nunca confirmado: PENDIENTE→CANCELADO no toca stock ni ventas.
-    // updateStatus ya envía el email de cambio de estado al cliente.
     await this.ordersService.updateStatus(
       order.id,
       { status: EstadoPedido.CANCELADO },
