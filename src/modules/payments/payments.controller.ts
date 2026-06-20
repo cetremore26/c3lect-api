@@ -21,6 +21,7 @@ import {
 import { SkipThrottle } from '@nestjs/throttler';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { CreatePendingPaymentDto } from './dto/create-pending-payment.dto';
 import { WebhookPaymentDto } from './dto/webhook-payment.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../../auth/guards/optional-jwt-auth.guard';
@@ -49,6 +50,24 @@ export class PaymentsController {
     @CurrentUser() user?: { id: string; rol: string },
   ) {
     return this.paymentsService.createPayment(dto, user?.id);
+  }
+
+  @Post('create-pending')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Crear preferencia de pago sin crear el pedido todavía',
+    description:
+      'Cotiza el carrito y genera una preferencia en MercadoPago. El pedido solo se crea (ya confirmado) cuando el webhook avisa que el pago fue aprobado — así un pago abandonado o rechazado no deja un pedido huérfano.',
+  })
+  @ApiCreatedResponse({
+    description: 'Retorna checkoutUrl, preferenceId y paymentId',
+  })
+  createPendingOrderPayment(
+    @Body() dto: CreatePendingPaymentDto,
+    @CurrentUser() user?: { id: string; rol: string },
+  ) {
+    return this.paymentsService.createPendingOrderPayment(dto, user?.id);
   }
 
   @Post('webhook')
