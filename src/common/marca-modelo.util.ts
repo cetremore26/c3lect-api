@@ -30,15 +30,6 @@ export async function findProductsByMarcaModelo(
   });
 }
 
-export async function findProductByMarcaModelo(
-  prisma: PrismaLike,
-  marca: string | null | undefined,
-  modelo: string,
-) {
-  const productos = await findProductsByMarcaModelo(prisma, marca, modelo);
-  return productos[0] ?? null;
-}
-
 /**
  * Separa marca/modelo a partir de un Product ya cargado, usando Product.marca como prefijo
  * conocido de Product.nombre. Si no aplica (marca ausente o no es prefijo del nombre), devuelve
