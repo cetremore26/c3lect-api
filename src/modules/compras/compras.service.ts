@@ -143,11 +143,14 @@ export class ComprasService {
 
     // Precios: actualizar solo costo (no tocar precios manuales)
     if (dto.costoUnitario !== undefined || modeloCambio) {
-      const precioExistente = await this.prisma.precioProducto.findUnique({ where: { modelo } });
+      const precioExistente = await this.prisma.precioProducto.findUnique({
+        where: { modelo: modeloCambio ? existing.modelo : modelo },
+      });
       if (precioExistente) {
         await this.prisma.precioProducto.update({
-          where: { modelo },
+          where: { modelo: precioExistente.modelo },
           data: {
+            modelo,
             costoUnitario,
             costoTotal: costoUnitario + precioExistente.costoAdicional,
           },
@@ -164,18 +167,17 @@ export class ComprasService {
       }
     }
 
-    // Sync producto del modelo nuevo/actual
-    await this.syncProducto(modelo, categoria, 'update');
-
-    // Si el modelo cambió, verificar si el modelo viejo quedó sin stock
+    // Si el modelo cambió, renombrar el producto existente en vez de crear uno nuevo
     if (modeloCambio) {
-      const invViejo = await this.prisma.inventarioMaestro.findUnique({ where: { modelo: existing.modelo } });
-      if (!invViejo || invViejo.stock <= 0) {
-        await this.prisma.product.updateMany({
-          where: { nombre: { equals: existing.modelo, mode: 'insensitive' }, disponible: true },
-          data: { disponible: false },
-        });
+      const renombrados = await this.prisma.product.updateMany({
+        where: { nombre: { equals: existing.modelo, mode: 'insensitive' } },
+        data: { nombre: modelo },
+      });
+      if (renombrados.count === 0) {
+        await this.syncProducto(modelo, categoria, 'update');
       }
+    } else {
+      await this.syncProducto(modelo, categoria, 'update');
     }
 
     await this.audit.log(
