@@ -11,6 +11,11 @@ export class UpdateCompraDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  marca?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   modelo?: string;
 
   @ApiPropertyOptional({ minimum: 1 })

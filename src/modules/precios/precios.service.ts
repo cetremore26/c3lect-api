@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreatePrecioDto } from './dto/create-precio.dto';
 import { UpdatePrecioDto } from './dto/update-precio.dto';
+import { combineMarcaModelo } from '../../common/marca-modelo.util';
 
 @Injectable()
 export class PreciosService {
@@ -19,6 +20,7 @@ export class PreciosService {
     const costoTotal = dto.costoUnitario + dto.costoAdicional;
     const precio = await this.prisma.precioProducto.create({
       data: {
+        marca: dto.marca,
         modelo: dto.modelo,
         costoUnitario: dto.costoUnitario,
         costoAdicional: dto.costoAdicional,
@@ -28,7 +30,7 @@ export class PreciosService {
       },
     });
     if (dto.precioPublico != null) {
-      await this.syncPrecioPublico(dto.modelo, dto.precioPublico);
+      await this.syncPrecioPublico(dto.marca, dto.modelo, dto.precioPublico);
     }
     return precio;
   }
@@ -52,7 +54,7 @@ export class PreciosService {
     });
 
     if (dto.precioPublico != null) {
-      await this.syncPrecioPublico(existing.modelo, dto.precioPublico);
+      await this.syncPrecioPublico(existing.marca, existing.modelo, dto.precioPublico);
     }
 
     return precio;
@@ -62,9 +64,10 @@ export class PreciosService {
    * El precio público de Precios es el que se muestra y cobra en la tienda.
    * Se propaga a todas las variantes de producto con ese nombre.
    */
-  private async syncPrecioPublico(modelo: string, precioPublico: number) {
+  private async syncPrecioPublico(marca: string | null | undefined, modelo: string, precioPublico: number) {
+    const nombreCompleto = combineMarcaModelo(marca, modelo);
     await this.prisma.product.updateMany({
-      where: { nombre: { equals: modelo, mode: 'insensitive' } },
+      where: { nombre: { equals: nombreCompleto, mode: 'insensitive' } },
       data: { precio: precioPublico },
     });
   }

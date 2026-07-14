@@ -4,6 +4,7 @@ import { AuditService } from '../audit/audit.service';
 import { calcGananciaPorVenta } from '../metrics/metrics.service';
 import { CreateVentaDto } from './dto/create-venta.dto';
 import { UpdateVentaDto } from './dto/update-venta.dto';
+import { combineMarcaModelo } from '../../common/marca-modelo.util';
 
 @Injectable()
 export class VentasService {
@@ -21,6 +22,7 @@ export class VentasService {
         fecha: new Date(dto.fecha),
         cliente: dto.cliente,
         celular: dto.celular ?? null,
+        marca: dto.marca,
         modelo: dto.modelo,
         estilo: dto.estilo ?? null,
         precioVenta: dto.precioVenta,
@@ -43,15 +45,16 @@ export class VentasService {
     // Si el stock llega a 0, deshabilitar todas las variantes de este modelo (mismo nombre)
     const inv = await this.prisma.inventarioMaestro.findUnique({ where: { modelo: dto.modelo } });
     if (inv && inv.stock <= 0) {
+      const nombreCompleto = combineMarcaModelo(dto.marca, dto.modelo);
       await this.prisma.product.updateMany({
-        where: { nombre: { equals: dto.modelo, mode: 'insensitive' }, disponible: true },
+        where: { nombre: { equals: nombreCompleto, mode: 'insensitive' }, disponible: true },
         data: { disponible: false },
       });
     }
 
     await this.audit.log(
       'CREAR', 'venta', venta.id,
-      `Nueva venta: ${dto.modelo} — ${dto.cliente} (${dto.estado})`,
+      `Nueva venta: ${combineMarcaModelo(dto.marca, dto.modelo)} — ${dto.cliente} (${dto.estado})`,
     );
 
     return venta;
@@ -80,6 +83,7 @@ export class VentasService {
         fecha:          dto.fecha    ? new Date(dto.fecha)             : existing.fecha,
         cliente:        dto.cliente  ?? existing.cliente,
         celular:        dto.celular  !== undefined ? dto.celular        : existing.celular,
+        marca:          dto.marca    ?? existing.marca,
         modelo:         dto.modelo   ?? existing.modelo,
         estilo:         dto.estilo   !== undefined ? dto.estilo         : existing.estilo,
         fuente:         dto.fuente   !== undefined ? dto.fuente         : existing.fuente,
@@ -122,8 +126,9 @@ export class VentasService {
     // Si el stock vuelve a ser positivo, re-habilitar las variantes de este modelo
     const inv = await this.prisma.inventarioMaestro.findUnique({ where: { modelo: existing.modelo } });
     if (inv && inv.stock > 0) {
+      const nombreCompleto = combineMarcaModelo(existing.marca, existing.modelo);
       await this.prisma.product.updateMany({
-        where: { nombre: { equals: existing.modelo, mode: 'insensitive' }, disponible: false },
+        where: { nombre: { equals: nombreCompleto, mode: 'insensitive' }, disponible: false },
         data: { disponible: true },
       });
     }

@@ -4,6 +4,10 @@ import { IsInt, IsOptional, IsString, Min } from 'class-validator';
 export class CreatePrecioDto {
   @ApiProperty()
   @IsString()
+  marca: string;
+
+  @ApiProperty()
+  @IsString()
   modelo: string;
 
   @ApiProperty()
