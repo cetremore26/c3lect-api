@@ -17,6 +17,10 @@ export class CreateVentaDto {
 
   @ApiProperty()
   @IsString()
+  marca: string;
+
+  @ApiProperty()
+  @IsString()
   modelo: string;
 
   @ApiPropertyOptional()

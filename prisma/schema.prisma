@@ -209,6 +209,7 @@ model AuditLog {
 
 model InventarioMaestro {
   id            String   @id @default(uuid())
+  marca         String?
   modelo        String   @unique
   stock         Int      @default(0)
   costoUnitario Int      @default(0) @map("costo_unitario")
@@ -221,6 +222,7 @@ model InventarioMaestro {
 
 model PrecioProducto {
   id             String   @id @default(uuid())
+  marca          String?
   modelo         String   @unique
   costoUnitario  Int      @default(0) @map("costo_unitario")
   costoAdicional Int      @default(25028) @map("costo_adicional")
@@ -241,6 +243,7 @@ model HistoricalSale {
   fecha          DateTime @db.Date
   cliente        String
   celular        String?
+  marca          String?
   modelo         String
   estilo         String?
   precioVenta    Int      @default(0) @map("precio_venta")
@@ -261,6 +264,7 @@ model HistoricalSale {
 model Purchase {
   id            String   @id @default(uuid())
   fecha         DateTime @db.Date
+  marca         String?
   modelo        String
   cantidad      Int
   costoUnitario Int      @map("costo_unitario")

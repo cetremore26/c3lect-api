@@ -14,6 +14,7 @@ import { calcGananciaPorVenta } from '../metrics/metrics.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
+import { deriveMarcaModeloFromProduct } from '../../common/marca-modelo.util';
 
 const VALID_TRANSITIONS: Record<EstadoPedido, EstadoPedido[]> = {
   PENDIENTE:  [EstadoPedido.CONFIRMADO, EstadoPedido.CANCELADO],
@@ -92,9 +93,9 @@ export class OrdersService {
     });
 
     for (const item of itemsData) {
-      const inv = await this.prisma.inventarioMaestro.findFirst({
-        where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
-      });
+      const product = productMap.get(item.productId)!;
+      const { modelo } = deriveMarcaModeloFromProduct(product);
+      const inv = await this.findInventarioByModelo(this.prisma, modelo, product.nombre);
       if (inv && inv.stock < item.cantidad) {
         throw new BadRequestException(
           `Stock insuficiente para "${item.nombre}" (disponible: ${inv.stock}, solicitado: ${item.cantidad}).`,
@@ -104,6 +105,27 @@ export class OrdersService {
 
     const subtotal = itemsData.reduce((sum, i) => sum + i.subtotal, 0);
     return { itemsData, subtotal, total: subtotal };
+  }
+
+  // Busca InventarioMaestro primero por el modelo derivado de Product.marca+nombre; si la fila
+  // todavía no fue migrada (marca/modelo separados), cae al comportamiento legado: modelo ===
+  // el nombre completo del producto. Este fallback es lo que mantiene vivo el checkout mientras
+  // dure la ventana de backfill.
+  private async findInventarioByModelo(
+    tx: Prisma.TransactionClient | PrismaService,
+    modelo: string,
+    nombreCompletoLegado: string,
+  ) {
+    const inv = await tx.inventarioMaestro.findFirst({
+      where: { modelo: { equals: modelo, mode: 'insensitive' } },
+    });
+    if (inv) return inv;
+    if (modelo !== nombreCompletoLegado) {
+      return tx.inventarioMaestro.findFirst({
+        where: { modelo: { equals: nombreCompletoLegado, mode: 'insensitive' } },
+      });
+    }
+    return null;
   }
 
   async createOrder(dto: CreateOrderDto, userId?: string) {
@@ -364,14 +386,22 @@ export class OrdersService {
   private async aplicarConfirmacion(
     tx: Prisma.TransactionClient,
     orderId: string,
-    items: { nombre: string; cantidad: number; precioUnitario: number }[],
+    items: { productId: string; nombre: string; cantidad: number; precioUnitario: number }[],
     cliente: string,
     celular: string | null | undefined,
   ): Promise<void> {
+    const productos = await tx.product.findMany({
+      where: { id: { in: items.map((i) => i.productId) } },
+    });
+    const productMap = new Map(productos.map((p) => [p.id, p]));
+
     for (const item of items) {
-      const inv = await tx.inventarioMaestro.findFirst({
-        where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
-      });
+      const product = productMap.get(item.productId);
+      const { marca, modelo } = product
+        ? deriveMarcaModeloFromProduct(product)
+        : { marca: null, modelo: item.nombre };
+
+      const inv = await this.findInventarioByModelo(tx, modelo, item.nombre);
       if (!inv) continue; // producto no rastreado en inventario maestro
 
       if (inv.stock < item.cantidad) {
@@ -399,7 +429,8 @@ export class OrdersService {
           fecha: new Date(),
           cliente,
           celular: celular ?? null,
-          modelo: item.nombre,
+          marca,
+          modelo,
           precioVenta: item.precioUnitario,
           costoProducto: inv.costoUnitario,
           costoEnvio: 0,
@@ -416,14 +447,20 @@ export class OrdersService {
   private async revertirConfirmacion(
     tx: Prisma.TransactionClient,
     orderId: string,
-    items: { nombre: string; cantidad: number }[],
+    items: { productId: string; nombre: string; cantidad: number }[],
   ): Promise<void> {
     await tx.historicalSale.deleteMany({ where: { orderId } });
 
+    const productos = await tx.product.findMany({
+      where: { id: { in: items.map((i) => i.productId) } },
+    });
+    const productMap = new Map(productos.map((p) => [p.id, p]));
+
     for (const item of items) {
-      const inv = await tx.inventarioMaestro.findFirst({
-        where: { modelo: { equals: item.nombre, mode: 'insensitive' } },
-      });
+      const product = productMap.get(item.productId);
+      const modelo = product ? deriveMarcaModeloFromProduct(product).modelo : item.nombre;
+
+      const inv = await this.findInventarioByModelo(tx, modelo, item.nombre);
       if (!inv) continue;
 
       const nuevoStock = inv.stock + item.cantidad;

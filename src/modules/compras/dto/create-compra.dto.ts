@@ -14,6 +14,10 @@ export class CreateCompraDto {
 
   @ApiProperty()
   @IsString()
+  marca: string;
+
+  @ApiProperty()
+  @IsString()
   modelo: string;
 
   @ApiProperty({ minimum: 1 })

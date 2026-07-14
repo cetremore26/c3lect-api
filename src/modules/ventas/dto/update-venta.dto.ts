@@ -20,6 +20,11 @@ export class UpdateVentaDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  marca?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
   modelo?: string;
 
   @ApiPropertyOptional()
