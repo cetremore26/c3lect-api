@@ -27,3 +27,6 @@ Thumbs.db
 /coverage
 
 /generated/prisma
+
+# Reportes generados por scripts de backfill — datos de trabajo, no código
+/scripts/output/
