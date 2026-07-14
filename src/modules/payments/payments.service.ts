@@ -195,12 +195,23 @@ export class PaymentsService {
   ): Promise<void> {
     if (dto.type !== 'payment') return;
 
-    if (xSignature && xRequestId) {
-      const valid = this.verifySignature(dto.data.id, xSignature, xRequestId);
-      if (!valid) {
-        this.logger.warn(`Webhook signature invalid for payment ${dto.data.id}`);
-        return;
-      }
+    if (!xSignature || !xRequestId) {
+      this.logger.warn(`Webhook para payment ${dto.data.id} rechazado: faltan los headers de firma`);
+      return;
+    }
+
+    let signatureValid: boolean;
+    try {
+      signatureValid = this.verifySignature(dto.data.id, xSignature, xRequestId);
+    } catch (err) {
+      // getOrThrow('MP_WEBHOOK_SECRET') falla aquí si el secreto no está configurado —
+      // se registra fuerte y se rechaza el webhook en vez de procesarlo sin verificar.
+      this.logger.error('No se pudo verificar la firma del webhook (¿falta MP_WEBHOOK_SECRET?)', err);
+      return;
+    }
+    if (!signatureValid) {
+      this.logger.warn(`Webhook signature invalid for payment ${dto.data.id}`);
+      return;
     }
 
     try {
@@ -386,8 +397,9 @@ export class PaymentsService {
     xSignature: string,
     xRequestId: string,
   ): boolean {
-    const secret = this.config.get<string>('MP_WEBHOOK_SECRET');
-    if (!secret) return true;
+    // Si falta la variable de entorno, esto lanza — a propósito: el llamador (handleWebhook)
+    // lo captura y rechaza el webhook en vez de tratarlo como válido por defecto.
+    const secret = this.config.getOrThrow<string>('MP_WEBHOOK_SECRET');
 
     try {
       const parts: Record<string, string> = {};
