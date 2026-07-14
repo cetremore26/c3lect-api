@@ -13,6 +13,12 @@ const CAT_MAP: Record<string, string> = {
   Accesorio: 'accesorio',
 };
 
+const CAT_PREFIX: Record<string, string> = {
+  reloj: 'r',
+  perfume: 'p',
+  accesorio: 'a',
+};
+
 function slugify(s: string): string {
   return s
     .toLowerCase()
@@ -23,6 +29,13 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9-]/g, '')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
+}
+
+// Convención de IDs del catálogo: {r|p|a}-marca-modelo(-estilo si aplica), ej. "r-curren-8442-blue-white".
+function buildProductId(cat: string, marca: string | null | undefined, modelo: string, estilo?: string): string {
+  const prefijo = CAT_PREFIX[cat] ?? 'r';
+  const partes = [slugify(marca ?? ''), slugify(modelo), estilo ? slugify(estilo) : ''].filter(Boolean);
+  return [prefijo, ...partes].join('-');
 }
 
 @Injectable()
@@ -65,7 +78,8 @@ export class ComprasService {
       },
     });
 
-    // Precios: solo crear si no existe (no sobreescribir precios manuales)
+    // Precios: solo se crea la primera vez que se compra este modelo. Si ya existe, no se toca
+    // — el precio ya está calculado y las compras posteriores del mismo producto no lo alteran.
     const precioExistente = await this.prisma.precioProducto.findUnique({ where: { modelo: dto.modelo } });
     if (!precioExistente) {
       await this.prisma.precioProducto.create({
@@ -76,16 +90,6 @@ export class ComprasService {
           costoAdicional: COSTO_ADICIONAL_DEFAULT,
           costoTotal: dto.costoUnitario + COSTO_ADICIONAL_DEFAULT,
           // precioPublico y precioCierre quedan null — admin los completa
-        },
-      });
-    } else {
-      // Solo actualizar campos de costo, respetar precios fijados manualmente
-      await this.prisma.precioProducto.update({
-        where: { modelo: dto.modelo },
-        data: {
-          marca: dto.marca,
-          costoUnitario: dto.costoUnitario,
-          costoTotal: dto.costoUnitario + precioExistente.costoAdicional,
         },
       });
     }
@@ -217,7 +221,7 @@ export class ComprasService {
     if (productos.length === 0) {
       const cat = CAT_MAP[categoria] ?? 'reloj';
       const nombreCompleto = combineMarcaModelo(marca, modelo);
-      const id = slugify(nombreCompleto);
+      const id = buildProductId(cat, marca, modelo);
       try {
         await this.prisma.product.create({
           data: {
