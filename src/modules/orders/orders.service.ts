@@ -404,20 +404,25 @@ export class OrdersService {
       const inv = await this.findInventarioByModelo(tx, modelo, item.nombre);
       if (!inv) continue; // producto no rastreado en inventario maestro
 
-      if (inv.stock < item.cantidad) {
+      // Decremento atómico: la condición stock >= cantidad se evalúa y aplica
+      // en el mismo UPDATE (Postgres bloquea la fila y re-evalúa el WHERE al
+      // ejecutarse), así que dos confirmaciones concurrentes del mismo modelo
+      // no pueden partir ambas del mismo stock "viejo" y sobre-vender la
+      // última unidad.
+      const { count } = await tx.inventarioMaestro.updateMany({
+        where: { id: inv.id, stock: { gte: item.cantidad } },
+        data: { stock: { decrement: item.cantidad } },
+      });
+      if (count === 0) {
         throw new BadRequestException(
           `Stock insuficiente para "${item.nombre}" (disponible: ${inv.stock}, solicitado: ${item.cantidad}).`,
         );
       }
 
-      const nuevoStock = Math.max(0, inv.stock - item.cantidad);
-      await tx.inventarioMaestro.update({
-        where: { id: inv.id },
-        data: { stock: nuevoStock },
-      });
+      const invActualizado = await tx.inventarioMaestro.findUniqueOrThrow({ where: { id: inv.id } });
       await tx.product.updateMany({
         where: { nombre: { equals: item.nombre, mode: 'insensitive' } },
-        data: { disponible: nuevoStock > 0 },
+        data: { disponible: invActualizado.stock > 0 },
       });
 
       const gananciaNeta = calcGananciaPorVenta(

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { calcGananciaPorVenta } from '../metrics/metrics.service';
@@ -17,40 +17,58 @@ export class VentasService {
     const saldoPendiente = dto.precioVenta > 0 ? Math.max(0, dto.precioVenta - dto.abono) : 0;
     const gananciaNeta = calcGananciaPorVenta(dto.estado, dto.precioVenta, dto.costoProducto, dto.costoEnvio, dto.abono);
 
-    const venta = await this.prisma.historicalSale.create({
-      data: {
-        fecha: new Date(dto.fecha),
-        cliente: dto.cliente,
-        celular: dto.celular ?? null,
-        marca: dto.marca,
-        modelo: dto.modelo,
-        estilo: dto.estilo ?? null,
-        precioVenta: dto.precioVenta,
-        costoProducto: dto.costoProducto,
-        costoEnvio: dto.costoEnvio,
-        abono: dto.abono,
-        saldoPendiente,
-        gananciaNeta,
-        fuente: dto.fuente ?? null,
-        estado: dto.estado,
-      },
-    });
-
-    // Descontar del inventario
-    await this.prisma.inventarioMaestro.updateMany({
-      where: { modelo: dto.modelo },
-      data: { stock: { decrement: 1 } },
-    });
-
-    // Si el stock llega a 0, deshabilitar todas las variantes de este modelo (mismo nombre)
-    const inv = await this.prisma.inventarioMaestro.findUnique({ where: { modelo: dto.modelo } });
-    if (inv && inv.stock <= 0) {
-      const nombreCompleto = combineMarcaModelo(dto.marca, dto.modelo);
-      await this.prisma.product.updateMany({
-        where: { nombre: { equals: nombreCompleto, mode: 'insensitive' }, disponible: true },
-        data: { disponible: false },
+    const venta = await this.prisma.$transaction(async (tx) => {
+      const nuevaVenta = await tx.historicalSale.create({
+        data: {
+          fecha: new Date(dto.fecha),
+          cliente: dto.cliente,
+          celular: dto.celular ?? null,
+          marca: dto.marca,
+          modelo: dto.modelo,
+          estilo: dto.estilo ?? null,
+          precioVenta: dto.precioVenta,
+          costoProducto: dto.costoProducto,
+          costoEnvio: dto.costoEnvio,
+          abono: dto.abono,
+          saldoPendiente,
+          gananciaNeta,
+          fuente: dto.fuente ?? null,
+          estado: dto.estado,
+        },
       });
-    }
+
+      // Buscar el inventario primero, case-insensitive (igual que orders.service.ts)
+      // — si el modelo no está rastreado en inventario maestro, no se toca stock.
+      const inv = await tx.inventarioMaestro.findFirst({
+        where: { modelo: { equals: dto.modelo, mode: 'insensitive' } },
+      });
+
+      if (inv) {
+        // Decremento atómico con piso en cero: la condición stock >= 1 se
+        // evalúa en el mismo UPDATE, así que nunca queda stock negativo.
+        const { count } = await tx.inventarioMaestro.updateMany({
+          where: { id: inv.id, stock: { gte: 1 } },
+          data: { stock: { decrement: 1 } },
+        });
+        if (count === 0) {
+          throw new BadRequestException(
+            `Stock insuficiente para "${combineMarcaModelo(dto.marca, dto.modelo)}".`,
+          );
+        }
+
+        // Si el stock llega a 0, deshabilitar todas las variantes de este modelo (mismo nombre)
+        const invActualizado = await tx.inventarioMaestro.findUniqueOrThrow({ where: { id: inv.id } });
+        if (invActualizado.stock <= 0) {
+          const nombreCompleto = combineMarcaModelo(dto.marca, dto.modelo);
+          await tx.product.updateMany({
+            where: { nombre: { equals: nombreCompleto, mode: 'insensitive' }, disponible: true },
+            data: { disponible: false },
+          });
+        }
+      }
+
+      return nuevaVenta;
+    });
 
     await this.audit.log(
       'CREAR', 'venta', venta.id,
