@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, EstadoPedido, EstadoPago } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { categoriaDesdeCapitalizada, clasificarModelo, Categoria } from '../../common/categoria.util';
+import { categoriaDesdeCapitalizada, clasificarModelo, Categoria, CATEGORIA_CAPITALIZADA } from '../../common/categoria.util';
 
 export function calcGananciaPorVenta(
   _estado: string,
@@ -23,11 +23,11 @@ export class MetricsService {
   // en la base de datos vía aggregate() en vez de cargar cada fila. gananciaNeta no
   // (ver sumarGananciaNeta): calcGananciaPorVenta es una fórmula condicional por fila,
   // no expresable como aggregate/groupBy sin SQL crudo.
-  private async agregadosVentas() {
+  private async agregadosVentas(where: Prisma.HistoricalSaleWhereInput = {}) {
     const [totales, positivos] = await Promise.all([
-      this.prisma.historicalSale.aggregate({ _sum: { abono: true, precioVenta: true } }),
+      this.prisma.historicalSale.aggregate({ where, _sum: { abono: true, precioVenta: true } }),
       this.prisma.historicalSale.aggregate({
-        where: { precioVenta: { gt: 0 } },
+        where: { ...where, precioVenta: { gt: 0 } },
         _sum: { costoEnvio: true, saldoPendiente: true },
       }),
     ]);
@@ -194,7 +194,7 @@ export class MetricsService {
     };
   }
 
-  async getSales(page = 1, limit = 20, desde?: string, hasta?: string, estado?: string, fuente?: string) {
+  async getSales(page = 1, limit = 20, desde?: string, hasta?: string, estado?: string, fuente?: string, categoria?: string) {
     const skip = (page - 1) * limit;
     const where: Prisma.HistoricalSaleWhereInput = {};
     if (desde || hasta) {
@@ -207,17 +207,32 @@ export class MetricsService {
       where.estado = lista.length === 1 ? lista[0] : { in: lista };
     }
     if (fuente) where.fuente = fuente;
+    if (categoria) {
+      const capitalizada = CATEGORIA_CAPITALIZADA[categoria as Categoria];
+      const modelos = await this.prisma.inventarioMaestro.findMany({
+        where: { categoria: capitalizada },
+        select: { modelo: true },
+      });
+      where.OR = modelos.length > 0
+        ? modelos.map((m) => ({ modelo: { equals: m.modelo, mode: 'insensitive' as const } }))
+        : [{ id: '__sin_coincidencias__' }];
+    }
 
-    const [raw, total] = await Promise.all([
+    const [raw, total, agregados] = await Promise.all([
       this.prisma.historicalSale.findMany({ where, orderBy: [{ fecha: 'desc' }, { id: 'asc' }], skip, take: limit }),
       this.prisma.historicalSale.count({ where }),
+      this.agregadosVentas(where),
     ]);
     const data = raw.map((v) => ({
       ...v,
       gananciaNeta: calcGananciaPorVenta(v.estado, v.precioVenta, v.costoProducto, v.costoEnvio, v.abono),
       saldoPendiente: v.precioVenta > 0 ? Math.max(0, v.precioVenta - v.abono) : 0,
     }));
-    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
+    return {
+      data,
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      agregados: { totalVendido: agregados.totalVendido, pendienteCobro: agregados.pendienteCobro },
+    };
   }
 
   async getPurchases(page = 1, limit = 20, desde?: string, hasta?: string, categoria?: string) {
