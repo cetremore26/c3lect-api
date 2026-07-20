@@ -1,18 +1,19 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
+import { CATEGORIAS } from '../../../common/categoria.util';
 
 export class QuerySalesDto extends PaginationQueryDto {
-  // Override del límite heredado (máx. 50): el dashboard usa este mismo
-  // endpoint para traer de una vez todas las ventas pendientes/abonadas
-  // (AdminDashboard.tsx pide limit=200), no solo para la tabla paginada.
-  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 200 })
+  // Override del límite heredado (máx. 50): el dashboard pide limit=200 para
+  // traer de una vez todas las ventas pendientes/abonadas, y el export a CSV
+  // de AdminVentas pide limit=1000 — ninguno es la tabla paginada normal.
+  @ApiPropertyOptional({ default: 20, minimum: 1, maximum: 5000 })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
   @Min(1)
-  @Max(200)
+  @Max(5000)
   limit?: number = 20;
 
   @ApiPropertyOptional({ example: '2026-01-01' })
@@ -38,4 +39,9 @@ export class QuerySalesDto extends PaginationQueryDto {
   @IsString()
   @MaxLength(50)
   fuente?: string;
+
+  @ApiPropertyOptional({ enum: CATEGORIAS })
+  @IsOptional()
+  @IsIn(CATEGORIAS)
+  categoria?: string;
 }

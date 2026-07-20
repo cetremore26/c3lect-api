@@ -37,6 +37,7 @@ export class MetricsController {
       query.hasta,
       query.estado,
       query.fuente,
+      query.categoria,
     );
   }
 
