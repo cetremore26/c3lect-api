@@ -56,32 +56,32 @@ export class InventarioService {
 
     const modelosActivos = Object.keys(porModelo);
 
-    // Eliminar entradas huérfanas (modelos que ya no existen en ninguna compra)
-    await this.prisma.inventarioMaestro.deleteMany({
-      where: { modelo: { notIn: modelosActivos } },
-    });
-    // En precios: solo eliminar entradas sin precios manuales (auto-creadas desde compras)
-    await this.prisma.precioProducto.deleteMany({
-      where: {
-        modelo: { notIn: modelosActivos },
-        precioPublico: null,
-        precioCierre: null,
-      },
-    });
+    const upsertados = await this.prisma.$transaction(async (tx) => {
+      // Eliminar entradas huérfanas (modelos que ya no existen en ninguna compra)
+      await tx.inventarioMaestro.deleteMany({
+        where: { modelo: { notIn: modelosActivos } },
+      });
+      // En precios: solo eliminar entradas sin precios manuales (auto-creadas desde compras)
+      await tx.precioProducto.deleteMany({
+        where: {
+          modelo: { notIn: modelosActivos },
+          precioPublico: null,
+          precioCierre: null,
+        },
+      });
 
-    let upsertados = 0;
-    for (const [modelo, datos] of Object.entries(porModelo)) {
-      const vendidos = ventasPorModelo[modelo] ?? 0;
-      const stock = Math.max(0, datos.cantidad - vendidos);
-      const costoTotal = datos.costoUnitario + COSTO_ADICIONAL_DEFAULT;
+      let count = 0;
+      for (const [modelo, datos] of Object.entries(porModelo)) {
+        const vendidos = ventasPorModelo[modelo] ?? 0;
+        const stock = Math.max(0, datos.cantidad - vendidos);
+        const costoTotal = datos.costoUnitario + COSTO_ADICIONAL_DEFAULT;
 
-      await Promise.all([
-        this.prisma.inventarioMaestro.upsert({
+        await tx.inventarioMaestro.upsert({
           where: { modelo },
           update: { marca: datos.marca, stock, costoUnitario: datos.costoUnitario, categoria: datos.categoria },
           create: { marca: datos.marca, modelo, stock, costoUnitario: datos.costoUnitario, categoria: datos.categoria },
-        }),
-        this.prisma.precioProducto.upsert({
+        });
+        await tx.precioProducto.upsert({
           where: { modelo },
           update: { marca: datos.marca, costoUnitario: datos.costoUnitario, costoTotal },
           create: {
@@ -91,10 +91,11 @@ export class InventarioService {
             costoAdicional: COSTO_ADICIONAL_DEFAULT,
             costoTotal,
           },
-        }),
-      ]);
-      upsertados++;
-    }
+        });
+        count++;
+      }
+      return count;
+    }, { timeout: 15000 });
 
     return { seeded: upsertados, modelos: modelosActivos };
   }

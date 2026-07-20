@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Resend } from 'resend';
+import { escapeHtml } from '../common/html-escape.util';
 
 export interface OrderEmailItem {
   nombre: string;
@@ -67,7 +68,7 @@ export class MailService {
       subject: 'Bienvenido a C3LECT',
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
-          <h2 style="color:#111;margin-bottom:8px">Bienvenido, ${nombre}</h2>
+          <h2 style="color:#111;margin-bottom:8px">Bienvenido, ${escapeHtml(nombre)}</h2>
           <p style="color:#555">Tu cuenta en C3LECT ha sido creada exitosamente.</p>
           <p style="color:#555">Explora nuestra colección de relojería y perfumería de lujo.</p>
         </div>
@@ -89,7 +90,7 @@ export class MailService {
       .map(
         (i) => `
         <tr>
-          <td style="padding:8px 0;border-bottom:1px solid #eee">${i.nombre}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #eee">${escapeHtml(i.nombre)}</td>
           <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:center">${i.cantidad}</td>
           <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right">$${i.precioUnitario.toLocaleString('es-CO')}</td>
           <td style="padding:8px 0;border-bottom:1px solid #eee;text-align:right">$${i.subtotal.toLocaleString('es-CO')}</td>
@@ -103,7 +104,7 @@ export class MailService {
       subject: `Pedido confirmado — C3LECT`,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
-          <h2 style="color:#111">¡Pedido confirmado, ${nombre}!</h2>
+          <h2 style="color:#111">¡Pedido confirmado, ${escapeHtml(nombre)}!</h2>
           <p style="color:#555">Tu número de pedido es <strong>#${orderNumber}</strong>.</p>
           <table style="width:100%;border-collapse:collapse;margin:24px 0">
             <thead>
@@ -145,7 +146,7 @@ export class MailService {
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
           <h2 style="color:#111">Actualización de pedido</h2>
-          <p style="color:#555">Hola ${nombre}, tu pedido <strong>#${orderNumber}</strong> ha cambiado de estado.</p>
+          <p style="color:#555">Hola ${escapeHtml(nombre)}, tu pedido <strong>#${orderNumber}</strong> ha cambiado de estado.</p>
           <div style="background:#f4f4f5;border-radius:8px;padding:16px;margin-top:16px;font-weight:600;color:#111">
             ${label}
           </div>
@@ -171,7 +172,7 @@ export class MailService {
       html: `
         <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
           <h2 style="color:#111;margin-bottom:8px">Pago confirmado</h2>
-          <p style="color:#555">Hola ${nombre}, tu pago para el pedido <strong>#${orderNumber}</strong> fue aprobado exitosamente.</p>
+          <p style="color:#555">Hola ${escapeHtml(nombre)}, tu pago para el pedido <strong>#${orderNumber}</strong> fue aprobado exitosamente.</p>
           <div style="background:#f4f4f5;border-radius:8px;padding:16px;margin:24px 0;text-align:center">
             <span style="font-size:22px;font-weight:700;color:#C7AB2E">$${total.toLocaleString('es-CO')} COP</span>
           </div>
@@ -200,7 +201,7 @@ export class MailService {
       .map(
         (i) => `
         <tr>
-          <td style="padding:8px 4px;border-bottom:1px solid #eee">${i.nombre}</td>
+          <td style="padding:8px 4px;border-bottom:1px solid #eee">${escapeHtml(i.nombre)}</td>
           <td style="padding:8px 4px;border-bottom:1px solid #eee;text-align:center">${i.cantidad}</td>
           <td style="padding:8px 4px;border-bottom:1px solid #eee;text-align:right">$${i.precioUnitario.toLocaleString('es-CO')}</td>
           <td style="padding:8px 4px;border-bottom:1px solid #eee;text-align:right">$${i.subtotal.toLocaleString('es-CO')}</td>
@@ -215,7 +216,7 @@ export class MailService {
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
           <h2 style="color:#111">Nuevo pedido recibido</h2>
-          <p style="color:#555">Cliente: <strong>${clienteNombre}</strong></p>
+          <p style="color:#555">Cliente: <strong>${escapeHtml(clienteNombre)}</strong></p>
           <p style="color:#555">Número: <strong>#${orderNumber}</strong></p>
           <table style="width:100%;border-collapse:collapse;margin:24px 0">
             <thead>

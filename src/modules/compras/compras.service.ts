@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateCompraDto } from './dto/create-compra.dto';
@@ -48,54 +49,58 @@ export class ComprasService {
   async create(dto: CreateCompraDto) {
     const costoTotal = dto.cantidad * dto.costoUnitario;
 
-    const compra = await this.prisma.purchase.create({
-      data: {
-        fecha: new Date(dto.fecha),
-        marca: dto.marca,
-        modelo: dto.modelo,
-        cantidad: dto.cantidad,
-        costoUnitario: dto.costoUnitario,
-        costoTotal,
-        categoria: dto.categoria,
-      },
-    });
-
-    // Inventario: crear o sumar stock
-    await this.prisma.inventarioMaestro.upsert({
-      where: { modelo: dto.modelo },
-      update: {
-        marca: dto.marca,
-        stock: { increment: dto.cantidad },
-        costoUnitario: dto.costoUnitario,
-        categoria: dto.categoria,
-      },
-      create: {
-        marca: dto.marca,
-        modelo: dto.modelo,
-        stock: dto.cantidad,
-        costoUnitario: dto.costoUnitario,
-        categoria: dto.categoria,
-      },
-    });
-
-    // Precios: solo se crea la primera vez que se compra este modelo. Si ya existe, no se toca
-    // — el precio ya está calculado y las compras posteriores del mismo producto no lo alteran.
-    const precioExistente = await this.prisma.precioProducto.findUnique({ where: { modelo: dto.modelo } });
-    if (!precioExistente) {
-      await this.prisma.precioProducto.create({
+    const compra = await this.prisma.$transaction(async (tx) => {
+      const nuevaCompra = await tx.purchase.create({
         data: {
+          fecha: new Date(dto.fecha),
           marca: dto.marca,
           modelo: dto.modelo,
+          cantidad: dto.cantidad,
           costoUnitario: dto.costoUnitario,
-          costoAdicional: COSTO_ADICIONAL_DEFAULT,
-          costoTotal: dto.costoUnitario + COSTO_ADICIONAL_DEFAULT,
-          // precioPublico y precioCierre quedan null — admin los completa
+          costoTotal,
+          categoria: dto.categoria,
         },
       });
-    }
 
-    // Productos: crear stub si no existe, o habilitar si estaba deshabilitado
-    await this.syncProducto(dto.marca, dto.modelo, dto.categoria, 'create');
+      // Inventario: crear o sumar stock
+      await tx.inventarioMaestro.upsert({
+        where: { modelo: dto.modelo },
+        update: {
+          marca: dto.marca,
+          stock: { increment: dto.cantidad },
+          costoUnitario: dto.costoUnitario,
+          categoria: dto.categoria,
+        },
+        create: {
+          marca: dto.marca,
+          modelo: dto.modelo,
+          stock: dto.cantidad,
+          costoUnitario: dto.costoUnitario,
+          categoria: dto.categoria,
+        },
+      });
+
+      // Precios: solo se crea la primera vez que se compra este modelo. Si ya existe, no se toca
+      // — el precio ya está calculado y las compras posteriores del mismo producto no lo alteran.
+      const precioExistente = await tx.precioProducto.findUnique({ where: { modelo: dto.modelo } });
+      if (!precioExistente) {
+        await tx.precioProducto.create({
+          data: {
+            marca: dto.marca,
+            modelo: dto.modelo,
+            costoUnitario: dto.costoUnitario,
+            costoAdicional: COSTO_ADICIONAL_DEFAULT,
+            costoTotal: dto.costoUnitario + COSTO_ADICIONAL_DEFAULT,
+            // precioPublico y precioCierre quedan null — admin los completa
+          },
+        });
+      }
+
+      // Productos: crear stub si no existe, o habilitar si estaba deshabilitado
+      await this.syncProducto(tx, dto.marca, dto.modelo, dto.categoria, 'create');
+
+      return nuevaCompra;
+    });
 
     await this.audit.log(
       'CREAR', 'compra', compra.id,
@@ -118,87 +123,91 @@ export class ComprasService {
     const modeloCambio      = dto.modelo && dto.modelo !== existing.modelo;
     const identidadCambio   = Boolean(modeloCambio) || (dto.marca !== undefined && dto.marca !== existing.marca);
 
-    const compra = await this.prisma.purchase.update({
-      where: { id },
-      data: {
-        fecha: dto.fecha ? new Date(dto.fecha) : existing.fecha,
-        marca,
-        modelo,
-        cantidad,
-        costoUnitario,
-        costoTotal,
-        categoria,
-      },
-    });
-
-    // Ajustar inventario
-    if (modeloCambio) {
-      await this.prisma.inventarioMaestro.updateMany({
-        where: { modelo: existing.modelo },
-        data: { stock: { decrement: existing.cantidad } },
-      });
-      await this.prisma.inventarioMaestro.upsert({
-        where: { modelo },
-        update: { marca, stock: { increment: cantidad }, costoUnitario, categoria },
-        create: { marca, modelo, stock: cantidad, costoUnitario, categoria },
-      });
-    } else {
-      const diff = cantidad - existing.cantidad;
-      await this.prisma.inventarioMaestro.updateMany({
-        where: { modelo },
+    const compra = await this.prisma.$transaction(async (tx) => {
+      const compraActualizada = await tx.purchase.update({
+        where: { id },
         data: {
+          fecha: dto.fecha ? new Date(dto.fecha) : existing.fecha,
           marca,
-          ...(diff !== 0 ? { stock: { increment: diff } } : {}),
+          modelo,
+          cantidad,
           costoUnitario,
+          costoTotal,
           categoria,
         },
       });
-    }
 
-    // Precios: actualizar solo costo (no tocar precios manuales)
-    if (dto.costoUnitario !== undefined || identidadCambio) {
-      const precioExistente = await this.prisma.precioProducto.findUnique({
-        where: { modelo: modeloCambio ? existing.modelo : modelo },
-      });
-      if (precioExistente) {
-        await this.prisma.precioProducto.update({
-          where: { modelo: precioExistente.modelo },
-          data: {
-            marca,
-            modelo,
-            costoUnitario,
-            costoTotal: costoUnitario + precioExistente.costoAdicional,
-          },
+      // Ajustar inventario
+      if (modeloCambio) {
+        await tx.inventarioMaestro.updateMany({
+          where: { modelo: existing.modelo },
+          data: { stock: { decrement: existing.cantidad } },
+        });
+        await tx.inventarioMaestro.upsert({
+          where: { modelo },
+          update: { marca, stock: { increment: cantidad }, costoUnitario, categoria },
+          create: { marca, modelo, stock: cantidad, costoUnitario, categoria },
         });
       } else {
-        await this.prisma.precioProducto.create({
+        const diff = cantidad - existing.cantidad;
+        await tx.inventarioMaestro.updateMany({
+          where: { modelo },
           data: {
             marca,
-            modelo,
+            ...(diff !== 0 ? { stock: { increment: diff } } : {}),
             costoUnitario,
-            costoAdicional: COSTO_ADICIONAL_DEFAULT,
-            costoTotal: costoUnitario + COSTO_ADICIONAL_DEFAULT,
+            categoria,
           },
         });
       }
-    }
 
-    // Si cambió la marca y/o el modelo, renombrar el producto existente en vez de crear uno nuevo.
-    // combineMarcaModelo(existing.marca, existing.modelo) colapsa a solo "modelo" cuando la fila
-    // vieja todavía no tenía marca (no migrada), así que esta única comparación cubre ambos casos.
-    if (identidadCambio) {
-      const combinedOld = combineMarcaModelo(existing.marca, existing.modelo);
-      const combinedNew = combineMarcaModelo(marca, modelo);
-      const renombrados = await this.prisma.product.updateMany({
-        where: { nombre: { equals: combinedOld, mode: 'insensitive' } },
-        data: { nombre: combinedNew, ...(marca ? { marca } : {}) },
-      });
-      if (renombrados.count === 0) {
-        await this.syncProducto(marca, modelo, categoria, 'update');
+      // Precios: actualizar solo costo (no tocar precios manuales)
+      if (dto.costoUnitario !== undefined || identidadCambio) {
+        const precioExistente = await tx.precioProducto.findUnique({
+          where: { modelo: modeloCambio ? existing.modelo : modelo },
+        });
+        if (precioExistente) {
+          await tx.precioProducto.update({
+            where: { modelo: precioExistente.modelo },
+            data: {
+              marca,
+              modelo,
+              costoUnitario,
+              costoTotal: costoUnitario + precioExistente.costoAdicional,
+            },
+          });
+        } else {
+          await tx.precioProducto.create({
+            data: {
+              marca,
+              modelo,
+              costoUnitario,
+              costoAdicional: COSTO_ADICIONAL_DEFAULT,
+              costoTotal: costoUnitario + COSTO_ADICIONAL_DEFAULT,
+            },
+          });
+        }
       }
-    } else {
-      await this.syncProducto(marca, modelo, categoria, 'update');
-    }
+
+      // Si cambió la marca y/o el modelo, renombrar el producto existente en vez de crear uno nuevo.
+      // combineMarcaModelo(existing.marca, existing.modelo) colapsa a solo "modelo" cuando la fila
+      // vieja todavía no tenía marca (no migrada), así que esta única comparación cubre ambos casos.
+      if (identidadCambio) {
+        const combinedOld = combineMarcaModelo(existing.marca, existing.modelo);
+        const combinedNew = combineMarcaModelo(marca, modelo);
+        const renombrados = await tx.product.updateMany({
+          where: { nombre: { equals: combinedOld, mode: 'insensitive' } },
+          data: { nombre: combinedNew, ...(marca ? { marca } : {}) },
+        });
+        if (renombrados.count === 0) {
+          await this.syncProducto(tx, marca, modelo, categoria, 'update');
+        }
+      } else {
+        await this.syncProducto(tx, marca, modelo, categoria, 'update');
+      }
+
+      return compraActualizada;
+    });
 
     await this.audit.log(
       'EDITAR', 'compra', id,
@@ -212,18 +221,24 @@ export class ComprasService {
    * Crea un producto stub (pendiente) si no existe ninguna variante con ese nombre, o habilita
    * las variantes existentes si estaban deshabilitadas. Solo actúa si hay stock disponible.
    */
-  private async syncProducto(marca: string | null | undefined, modelo: string, categoria: string, _op: 'create' | 'update') {
-    const inv = await this.prisma.inventarioMaestro.findUnique({ where: { modelo } });
+  private async syncProducto(
+    tx: Prisma.TransactionClient,
+    marca: string | null | undefined,
+    modelo: string,
+    categoria: string,
+    _op: 'create' | 'update',
+  ) {
+    const inv = await tx.inventarioMaestro.findUnique({ where: { modelo } });
     if (!inv || inv.stock <= 0) return;
 
-    const productos = await findProductsByMarcaModelo(this.prisma, marca, modelo);
+    const productos = await findProductsByMarcaModelo(tx, marca, modelo);
 
     if (productos.length === 0) {
       const cat = CAT_MAP[categoria] ?? 'reloj';
       const nombreCompleto = combineMarcaModelo(marca, modelo);
       const id = buildProductId(cat, marca, modelo);
       try {
-        await this.prisma.product.create({
+        await tx.product.create({
           data: {
             id,
             nombre: nombreCompleto,
@@ -243,7 +258,7 @@ export class ComprasService {
       const aHabilitar = productos.filter((p) => !p.disponible).map((p) => p.id);
       if (aHabilitar.length > 0) {
         // Tenemos stock de nuevo — habilitar variantes
-        await this.prisma.product.updateMany({
+        await tx.product.updateMany({
           where: { id: { in: aHabilitar } },
           data: { disponible: true },
         });
@@ -251,7 +266,7 @@ export class ComprasService {
       // Si el producto ya existe pero todavía no tiene marca registrada, completarla ahora.
       const sinMarca = productos.filter((p) => marca && !p.marca).map((p) => p.id);
       if (sinMarca.length > 0) {
-        await this.prisma.product.updateMany({
+        await tx.product.updateMany({
           where: { id: { in: sinMarca } },
           data: { marca },
         });

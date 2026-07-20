@@ -170,7 +170,7 @@ export class MetricsService {
     };
   }
 
-  async getSales(page: number, limit: number, desde?: string, hasta?: string, estado?: string, fuente?: string) {
+  async getSales(page = 1, limit = 20, desde?: string, hasta?: string, estado?: string, fuente?: string) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (desde || hasta) {
@@ -193,10 +193,10 @@ export class MetricsService {
       gananciaNeta: calcGananciaPorVenta(v.estado, v.precioVenta, v.costoProducto, v.costoEnvio, v.abono),
       saldoPendiente: v.precioVenta > 0 ? Math.max(0, v.precioVenta - v.abono) : 0,
     }));
-    return { data, total, page, limit, pages: Math.ceil(total / limit) };
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 
-  async getPurchases(page: number, limit: number, desde?: string, hasta?: string, categoria?: string) {
+  async getPurchases(page = 1, limit = 20, desde?: string, hasta?: string, categoria?: string) {
     const skip = (page - 1) * limit;
     const where: any = {};
     if (desde || hasta) {
@@ -210,7 +210,7 @@ export class MetricsService {
       this.prisma.purchase.findMany({ where, orderBy: [{ fecha: 'desc' }, { id: 'asc' }], skip, take: limit }),
       this.prisma.purchase.count({ where }),
     ]);
-    return { data, total, page, limit, pages: Math.ceil(total / limit) };
+    return { data, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } };
   }
 }
 
