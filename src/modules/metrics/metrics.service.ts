@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, EstadoPedido, EstadoPago } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { clasificarModelo } from '../../common/categoria.util';
+import { categoriaDesdeCapitalizada, clasificarModelo, Categoria } from '../../common/categoria.util';
 
 export function calcGananciaPorVenta(
   _estado: string,
@@ -109,20 +109,30 @@ export class MetricsService {
     ]);
 
     const gananciaNeta = this.sumarGananciaNeta(ventasParaGanancia);
+
+    const totalCompras = totalComprasAgg._sum.costoTotal ?? 0;
+    const totalGastos = totalGastosAgg._sum.monto ?? 0;
+    const inventario = await this.prisma.inventarioMaestro.findMany({
+      select: { modelo: true, categoria: true, stock: true, costoUnitario: true },
+    });
+    const capitalInventario = inventario.reduce((s, i) => s + i.stock * i.costoUnitario, 0);
+
+    // Categoría real desde InventarioMaestro (que ya la guarda), en vez de
+    // adivinarla por palabras clave del modelo — solo se cae al heurístico de
+    // clasificarModelo si la venta es de un modelo que ya no está en inventario.
+    const categoriaPorModelo = new Map<string, Categoria>(
+      inventario.map((i) => [i.modelo.toLowerCase(), categoriaDesdeCapitalizada(i.categoria)]),
+    );
     const ventasPorCategoria = { reloj: 0, perfume: 0, accesorio: 0 };
     for (const v of ventasParaGanancia) {
-      ventasPorCategoria[clasificarModelo(v.modelo)] += v.precioVenta;
+      const cat = categoriaPorModelo.get(v.modelo.toLowerCase()) ?? clasificarModelo(v.modelo);
+      ventasPorCategoria[cat] += v.precioVenta;
     }
     const topProductos = topProductosRaw.map((g) => ({
       modelo: g.modelo,
       cantidad: g._count.modelo,
       total: g._sum.precioVenta ?? 0,
     }));
-
-    const totalCompras = totalComprasAgg._sum.costoTotal ?? 0;
-    const totalGastos = totalGastosAgg._sum.monto ?? 0;
-    const inventario = await this.prisma.inventarioMaestro.findMany({ select: { stock: true, costoUnitario: true } });
-    const capitalInventario = inventario.reduce((s, i) => s + i.stock * i.costoUnitario, 0);
 
     const variacion = summary_variacion(ventasMesAgg._sum.total ?? 0, ventasMesAnteriorAgg._sum.total ?? 0);
 
