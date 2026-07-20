@@ -1,14 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { EstadoPedido, EstadoPago } from '@prisma/client';
+import { Prisma, EstadoPedido, EstadoPago } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
-
-const PERFUME_KEYWORDS = ['Lattafa', 'Afnan', 'Sahari', 'Zakat', 'Grandeur', 'Amaran'];
-
-function clasificarModelo(modelo: string): 'reloj' | 'perfume' | 'accesorio' {
-  if (modelo.includes('Organizador')) return 'accesorio';
-  if (PERFUME_KEYWORDS.some((k) => modelo.includes(k))) return 'perfume';
-  return 'reloj';
-}
+import { clasificarModelo } from '../../common/categoria.util';
 
 export function calcGananciaPorVenta(
   _estado: string,
@@ -26,6 +19,34 @@ export function calcGananciaPorVenta(
 export class MetricsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  // totalVendido/pendienteCobro/totalPrecioVentas son sumas lineales — se calculan
+  // en la base de datos vía aggregate() en vez de cargar cada fila. gananciaNeta no
+  // (ver sumarGananciaNeta): calcGananciaPorVenta es una fórmula condicional por fila,
+  // no expresable como aggregate/groupBy sin SQL crudo.
+  private async agregadosVentas() {
+    const [totales, positivos] = await Promise.all([
+      this.prisma.historicalSale.aggregate({ _sum: { abono: true, precioVenta: true } }),
+      this.prisma.historicalSale.aggregate({
+        where: { precioVenta: { gt: 0 } },
+        _sum: { costoEnvio: true, saldoPendiente: true },
+      }),
+    ]);
+    return {
+      totalPrecioVentas: totales._sum.precioVenta ?? 0,
+      totalVendido: (totales._sum.abono ?? 0) - (positivos._sum.costoEnvio ?? 0),
+      pendienteCobro: positivos._sum.saldoPendiente ?? 0,
+    };
+  }
+
+  private sumarGananciaNeta(
+    rows: { estado: string; precioVenta: number; costoProducto: number; costoEnvio: number; abono: number }[],
+  ): number {
+    return rows.reduce(
+      (sum, v) => sum + calcGananciaPorVenta(v.estado, v.precioVenta, v.costoProducto, v.costoEnvio, v.abono),
+      0,
+    );
+  }
+
   async getSummary() {
     const now = new Date();
     const inicioMes = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -39,11 +60,14 @@ export class MetricsService {
       productosDisponibles,
       clientesRegistrados,
       ultimosPedidos,
-      todasLasVentas,
+      ventasParaGanancia,
+      clientesDistintos,
+      topProductosRaw,
       totalPedidosHistoricos,
       totalComprasAgg,
       totalGastosAgg,
       ultimasVentasRaw,
+      agregadosVentas,
     ] = await Promise.all([
       this.prisma.payment.aggregate({
         _sum: { total: true },
@@ -63,38 +87,37 @@ export class MetricsService {
         orderBy: { createdAt: 'desc' },
         include: { items: true, shippingInfo: true, user: { select: { id: true, nombre: true, email: true } } },
       }),
+      // Solo lo necesario para gananciaNeta (no expresable en SQL sin duplicar la
+      // fórmula) y ventasPorCategoria (agrupa por una categoría calculada en JS
+      // sobre texto libre, ver clasificarModelo — tampoco expresable vía groupBy).
       this.prisma.historicalSale.findMany({
-        select: { modelo: true, precioVenta: true, costoProducto: true, costoEnvio: true, abono: true, estado: true, cliente: true, saldoPendiente: true },
+        select: { modelo: true, precioVenta: true, costoProducto: true, costoEnvio: true, abono: true, estado: true },
+      }),
+      this.prisma.historicalSale.groupBy({ by: ['cliente'] }),
+      this.prisma.historicalSale.groupBy({
+        by: ['modelo'],
+        _count: { modelo: true },
+        _sum: { precioVenta: true },
+        orderBy: { _count: { modelo: 'desc' } },
+        take: 5,
       }),
       this.prisma.historicalSale.count(),
       this.prisma.purchase.aggregate({ _sum: { costoTotal: true } }),
       this.prisma.expense.aggregate({ _sum: { monto: true } }),
       this.prisma.historicalSale.findMany({ take: 5, orderBy: { fecha: 'desc' } }),
+      this.agregadosVentas(),
     ]);
 
-    // Calcular métricas en JS a partir de los datos crudos
-    let totalVendido = 0;
-    let gananciaNeta = 0;
-    let pendienteCobro = 0;
-    const totalClientesSet = new Set<string>();
+    const gananciaNeta = this.sumarGananciaNeta(ventasParaGanancia);
     const ventasPorCategoria = { reloj: 0, perfume: 0, accesorio: 0 };
-    const conteoModelo: Record<string, { cantidad: number; total: number }> = {};
-
-    for (const v of todasLasVentas) {
-      totalVendido += v.abono - (v.precioVenta > 0 ? v.costoEnvio : 0);
-      if (v.precioVenta > 0) pendienteCobro += v.saldoPendiente;
-      gananciaNeta += calcGananciaPorVenta(v.estado, v.precioVenta, v.costoProducto, v.costoEnvio, v.abono);
-      totalClientesSet.add(v.cliente);
+    for (const v of ventasParaGanancia) {
       ventasPorCategoria[clasificarModelo(v.modelo)] += v.precioVenta;
-      if (!conteoModelo[v.modelo]) conteoModelo[v.modelo] = { cantidad: 0, total: 0 };
-      conteoModelo[v.modelo].cantidad += 1;
-      conteoModelo[v.modelo].total += v.precioVenta;
     }
-
-    const topProductos = Object.entries(conteoModelo)
-      .sort((a, b) => b[1].cantidad - a[1].cantidad)
-      .slice(0, 5)
-      .map(([modelo, { cantidad, total }]) => ({ modelo, cantidad, total }));
+    const topProductos = topProductosRaw.map((g) => ({
+      modelo: g.modelo,
+      cantidad: g._count.modelo,
+      total: g._sum.precioVenta ?? 0,
+    }));
 
     const totalCompras = totalComprasAgg._sum.costoTotal ?? 0;
     const totalGastos = totalGastosAgg._sum.monto ?? 0;
@@ -104,7 +127,7 @@ export class MetricsService {
     const variacion = summary_variacion(ventasMesAgg._sum.total ?? 0, ventasMesAnteriorAgg._sum.total ?? 0);
 
     return {
-      totalVendido,
+      totalVendido: agregadosVentas.totalVendido,
       ventasMes: ventasMesAgg._sum.total ?? 0,
       ventasMesAnterior: ventasMesAnteriorAgg._sum.total ?? 0,
       variacionMes: variacion,
@@ -112,12 +135,12 @@ export class MetricsService {
       totalPedidosHistoricos,
       productosDisponibles,
       clientesRegistrados,
-      totalClientesHistoricos: totalClientesSet.size,
+      totalClientesHistoricos: clientesDistintos.length,
       totalCompras,
       totalGastos,
       capitalInventario,
       gananciaNeta,
-      pendienteCobro,
+      pendienteCobro: agregadosVentas.pendienteCobro,
       ultimosPedidos,
       ultimasVentas: ultimasVentasRaw,
       ventasPorCategoria,
@@ -126,27 +149,18 @@ export class MetricsService {
   }
 
   async getFinancial() {
-    const [ventas, comprasAgg, gastosAgg, inventario, comprasCat] = await Promise.all([
+    const [ventasParaGanancia, comprasAgg, gastosAgg, inventario, comprasCat, agregadosVentas] = await Promise.all([
       this.prisma.historicalSale.findMany({
-        select: { precioVenta: true, costoProducto: true, costoEnvio: true, abono: true, saldoPendiente: true, estado: true },
+        select: { precioVenta: true, costoProducto: true, costoEnvio: true, abono: true, estado: true },
       }),
       this.prisma.purchase.aggregate({ _sum: { costoTotal: true } }),
       this.prisma.expense.aggregate({ _sum: { monto: true } }),
       this.prisma.inventarioMaestro.findMany({ select: { stock: true, costoUnitario: true } }),
       this.prisma.purchase.groupBy({ by: ['categoria'], _sum: { costoTotal: true } }),
+      this.agregadosVentas(),
     ]);
 
-    let totalPrecioVentas = 0;
-    let totalVendido = 0;
-    let gananciaNetaVentas = 0;
-    let pendienteCobro = 0;
-
-    for (const v of ventas) {
-      totalPrecioVentas += v.precioVenta;
-      totalVendido += v.abono - (v.precioVenta > 0 ? v.costoEnvio : 0);
-      if (v.precioVenta > 0) pendienteCobro += v.saldoPendiente;
-      gananciaNetaVentas += calcGananciaPorVenta(v.estado, v.precioVenta, v.costoProducto, v.costoEnvio, v.abono);
-    }
+    const gananciaNetaVentas = this.sumarGananciaNeta(ventasParaGanancia);
 
     const capitalInventario = inventario.reduce((s, i) => s + i.stock * i.costoUnitario, 0);
     const totalCompras = comprasAgg._sum.costoTotal ?? 0;
@@ -158,10 +172,10 @@ export class MetricsService {
     }
 
     return {
-      totalPrecioVentas,
-      totalVendido,
+      totalPrecioVentas: agregadosVentas.totalPrecioVentas,
+      totalVendido: agregadosVentas.totalVendido,
       gananciaNetaVentas,
-      pendienteCobro,
+      pendienteCobro: agregadosVentas.pendienteCobro,
       totalCompras,
       comprasPorCategoria,
       capitalInventario,
@@ -172,7 +186,7 @@ export class MetricsService {
 
   async getSales(page = 1, limit = 20, desde?: string, hasta?: string, estado?: string, fuente?: string) {
     const skip = (page - 1) * limit;
-    const where: any = {};
+    const where: Prisma.HistoricalSaleWhereInput = {};
     if (desde || hasta) {
       where.fecha = {};
       if (desde) where.fecha.gte = new Date(desde);
@@ -198,7 +212,7 @@ export class MetricsService {
 
   async getPurchases(page = 1, limit = 20, desde?: string, hasta?: string, categoria?: string) {
     const skip = (page - 1) * limit;
-    const where: any = {};
+    const where: Prisma.PurchaseWhereInput = {};
     if (desde || hasta) {
       where.fecha = {};
       if (desde) where.fecha.gte = new Date(desde);

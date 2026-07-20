@@ -303,7 +303,7 @@ export class OrdersService {
       void this.mail.sendOrderStatusUpdate(email, nombre, order.orderNumber, dto.status);
     }
 
-    void this.audit.log(
+    await this.audit.log(
       'ESTADO', 'pedido', id,
       `Pedido ${order.orderNumber}: ${order.status} → ${dto.status}`,
       adminId,
@@ -371,7 +371,7 @@ export class OrdersService {
       return created;
     });
 
-    void this.audit.log(
+    await this.audit.log(
       'ESTADO', 'pedido', order.id,
       `Pedido ${order.orderNumber}: creado y confirmado vía MercadoPago`,
       'MERCADOPAGO',
