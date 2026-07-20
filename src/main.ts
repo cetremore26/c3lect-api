@@ -41,6 +41,10 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('api/docs', app, document);
 
+  // Deja que un SIGTERM/SIGINT (ej. redeploy de Render) cierre el servidor y
+  // desconecte Prisma de forma ordenada en vez de cortar a mitad de una escritura.
+  app.enableShutdownHooks();
+
   const port = config.get<number>('PORT') ?? 3000;
   await app.listen(port);
 }

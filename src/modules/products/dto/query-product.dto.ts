@@ -1,4 +1,4 @@
-import { IsOptional, IsString, IsBoolean, IsEnum, IsInt, Min, Max } from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsEnum, IsInt, MaxLength, Min, Max } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
@@ -12,16 +12,19 @@ export class QueryProductDto {
   @ApiPropertyOptional({ example: 'reloj' })
   @IsOptional()
   @IsString()
+  @MaxLength(100)
   categoria?: string;
 
   @ApiPropertyOptional({ example: 'Fossil' })
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   marca?: string;
 
   @ApiPropertyOptional({ example: 'Hombre' })
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   genero?: string;
 
   @ApiPropertyOptional({ enum: RangoPrecio, example: RangoPrecio.MEDIO })

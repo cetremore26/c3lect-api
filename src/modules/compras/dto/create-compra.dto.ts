@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsInt, IsString, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsString, MaxLength, Min } from 'class-validator';
 
 export enum CategoriaCompra {
   Reloj = 'Reloj',
@@ -14,10 +14,12 @@ export class CreateCompraDto {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(150)
   marca: string;
 
   @ApiProperty()
   @IsString()
+  @MaxLength(150)
   modelo: string;
 
   @ApiProperty({ minimum: 1 })

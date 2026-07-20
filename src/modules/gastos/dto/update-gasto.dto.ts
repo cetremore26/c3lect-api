@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class UpdateGastoDto {
   @ApiPropertyOptional()
@@ -10,6 +10,7 @@ export class UpdateGastoDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   concepto?: string;
 
   @ApiPropertyOptional()
@@ -21,10 +22,12 @@ export class UpdateGastoDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   responsable?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   estado?: string;
 }

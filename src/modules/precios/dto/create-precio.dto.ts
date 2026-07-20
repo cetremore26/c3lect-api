@@ -1,13 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreatePrecioDto {
   @ApiProperty()
   @IsString()
+  @MaxLength(150)
   marca: string;
 
   @ApiProperty()
   @IsString()
+  @MaxLength(150)
   modelo: string;
 
   @ApiProperty()

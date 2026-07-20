@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateGastoDto {
   @ApiProperty({ example: '2026-06-15' })
@@ -8,6 +8,7 @@ export class CreateGastoDto {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(500)
   concepto: string;
 
   @ApiProperty()
@@ -18,10 +19,12 @@ export class CreateGastoDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   responsable?: string;
 
   @ApiPropertyOptional({ enum: ['Pagado', 'Pendiente'] })
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   estado?: string;
 }
