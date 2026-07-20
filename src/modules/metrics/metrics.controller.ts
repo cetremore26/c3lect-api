@@ -1,9 +1,11 @@
 import { Controller, Get, Query, UseGuards } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { MetricsService } from './metrics.service';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { QuerySalesDto } from './dto/query-sales.dto';
+import { QueryPurchasesDto } from './dto/query-purchases.dto';
 
 @ApiTags('Métricas')
 @Controller('metrics')
@@ -27,50 +29,26 @@ export class MetricsController {
 
   @Get('sales')
   @ApiOperation({ summary: 'Ventas históricas con filtros y paginación (ADMIN)' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'desde', required: false, type: String, description: 'YYYY-MM-DD' })
-  @ApiQuery({ name: 'hasta', required: false, type: String, description: 'YYYY-MM-DD' })
-  @ApiQuery({ name: 'estado', required: false, type: String })
-  @ApiQuery({ name: 'fuente', required: false, type: String })
-  getSales(
-    @Query('page') page = '1',
-    @Query('limit') limit = '20',
-    @Query('desde') desde?: string,
-    @Query('hasta') hasta?: string,
-    @Query('estado') estado?: string,
-    @Query('fuente') fuente?: string,
-  ) {
+  getSales(@Query() query: QuerySalesDto) {
     return this.metricsService.getSales(
-      Number(page),
-      Number(limit),
-      desde,
-      hasta,
-      estado,
-      fuente,
+      query.page,
+      query.limit,
+      query.desde,
+      query.hasta,
+      query.estado,
+      query.fuente,
     );
   }
 
   @Get('purchases')
   @ApiOperation({ summary: 'Compras históricas con filtros y paginación (ADMIN)' })
-  @ApiQuery({ name: 'page', required: false, type: Number })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'desde', required: false, type: String, description: 'YYYY-MM-DD' })
-  @ApiQuery({ name: 'hasta', required: false, type: String, description: 'YYYY-MM-DD' })
-  @ApiQuery({ name: 'categoria', required: false, type: String })
-  getPurchases(
-    @Query('page') page = '1',
-    @Query('limit') limit = '20',
-    @Query('desde') desde?: string,
-    @Query('hasta') hasta?: string,
-    @Query('categoria') categoria?: string,
-  ) {
+  getPurchases(@Query() query: QueryPurchasesDto) {
     return this.metricsService.getPurchases(
-      Number(page),
-      Number(limit),
-      desde,
-      hasta,
-      categoria,
+      query.page,
+      query.limit,
+      query.desde,
+      query.hasta,
+      query.categoria,
     );
   }
 }

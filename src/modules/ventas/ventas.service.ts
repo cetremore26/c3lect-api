@@ -133,23 +133,25 @@ export class VentasService {
     // lo que ya hizo OrdersService — puede descontar el stock dos veces si el
     // pedido también se cancela/elimina después. Falta decidir si se bloquea
     // este endpoint para ventas con orderId, o se redirige al flujo de pedidos.
-    await this.prisma.historicalSale.delete({ where: { id } });
+    await this.prisma.$transaction(async (tx) => {
+      await tx.historicalSale.delete({ where: { id } });
 
-    // Revertir el descuento de inventario que se aplicó al registrar la venta
-    await this.prisma.inventarioMaestro.updateMany({
-      where: { modelo: existing.modelo },
-      data: { stock: { increment: 1 } },
-    });
-
-    // Si el stock vuelve a ser positivo, re-habilitar las variantes de este modelo
-    const inv = await this.prisma.inventarioMaestro.findUnique({ where: { modelo: existing.modelo } });
-    if (inv && inv.stock > 0) {
-      const nombreCompleto = combineMarcaModelo(existing.marca, existing.modelo);
-      await this.prisma.product.updateMany({
-        where: { nombre: { equals: nombreCompleto, mode: 'insensitive' }, disponible: false },
-        data: { disponible: true },
+      // Revertir el descuento de inventario que se aplicó al registrar la venta
+      await tx.inventarioMaestro.updateMany({
+        where: { modelo: existing.modelo },
+        data: { stock: { increment: 1 } },
       });
-    }
+
+      // Si el stock vuelve a ser positivo, re-habilitar las variantes de este modelo
+      const inv = await tx.inventarioMaestro.findUnique({ where: { modelo: existing.modelo } });
+      if (inv && inv.stock > 0) {
+        const nombreCompleto = combineMarcaModelo(existing.marca, existing.modelo);
+        await tx.product.updateMany({
+          where: { nombre: { equals: nombreCompleto, mode: 'insensitive' }, disponible: false },
+          data: { disponible: true },
+        });
+      }
+    });
 
     await this.audit.log(
       'ELIMINAR', 'venta', id,

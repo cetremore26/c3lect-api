@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_FILTER } from '@nestjs/core';
+import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
+import { validate } from './config/environment';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './modules/products/products.module';
 import { AuthModule } from './auth/auth.module';
@@ -19,7 +21,7 @@ import { MarcasModule } from './modules/marcas/marcas.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate }),
     ThrottlerModule.forRoot({
       throttlers: [
         { name: 'default', ttl: 60000, limit: 100 },
@@ -43,6 +45,7 @@ import { MarcasModule } from './modules/marcas/marcas.module';
   ],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_FILTER, useClass: PrismaExceptionFilter },
   ],
 })
 export class AppModule {}
