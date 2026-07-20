@@ -2,7 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
-import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
+import { AppController } from './app.controller';
+import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { validate } from './config/environment';
 import { PrismaModule } from './prisma/prisma.module';
 import { ProductsModule } from './modules/products/products.module';
@@ -43,9 +44,10 @@ import { MarcasModule } from './modules/marcas/marcas.module';
     PreciosModule,
     MarcasModule,
   ],
+  controllers: [AppController],
   providers: [
     { provide: APP_GUARD, useClass: ThrottlerGuard },
-    { provide: APP_FILTER, useClass: PrismaExceptionFilter },
+    { provide: APP_FILTER, useClass: GlobalExceptionFilter },
   ],
 })
 export class AppModule {}

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class CreateVentaDto {
   @ApiProperty({ example: '2026-06-15' })
@@ -8,24 +8,29 @@ export class CreateVentaDto {
 
   @ApiProperty()
   @IsString()
+  @MaxLength(150)
   cliente: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(30)
   celular?: string;
 
   @ApiProperty()
   @IsString()
+  @MaxLength(150)
   marca: string;
 
   @ApiProperty()
   @IsString()
+  @MaxLength(150)
   modelo: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   estilo?: string;
 
   @ApiProperty({ description: '0 para Uso Personal' })
@@ -51,9 +56,11 @@ export class CreateVentaDto {
   @ApiPropertyOptional({ enum: ['WhatsApp', 'Presencial', 'Referido', 'Instagram'] })
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   fuente?: string;
 
   @ApiProperty({ enum: ['Pagado', 'Abonado', 'Pendiente', 'Uso Personal'] })
   @IsString()
+  @MaxLength(50)
   estado: string;
 }

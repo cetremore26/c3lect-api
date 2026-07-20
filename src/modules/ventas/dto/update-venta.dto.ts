@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 
 export class UpdateVentaDto {
   @ApiPropertyOptional()
@@ -10,26 +10,31 @@ export class UpdateVentaDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   cliente?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(30)
   celular?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   marca?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   modelo?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   estilo?: string;
 
   @ApiPropertyOptional()
@@ -59,10 +64,12 @@ export class UpdateVentaDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   fuente?: string;
 
   @ApiPropertyOptional({ enum: ['Pagado', 'Abonado', 'Pendiente', 'Uso Personal'] })
   @IsOptional()
   @IsString()
+  @MaxLength(50)
   estado?: string;
 }

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import { CategoriaCompra } from './create-compra.dto';
 
 export class UpdateCompraDto {
@@ -11,11 +11,13 @@ export class UpdateCompraDto {
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   marca?: string;
 
   @ApiPropertyOptional()
   @IsOptional()
   @IsString()
+  @MaxLength(150)
   modelo?: string;
 
   @ApiPropertyOptional({ minimum: 1 })
