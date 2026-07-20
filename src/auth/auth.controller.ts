@@ -7,6 +7,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiCreatedResponse,
@@ -43,6 +44,7 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Login con email y contraseña' })
   @ApiOkResponse({ description: 'Retorna accessToken y refreshToken' })
   @ApiUnauthorizedResponse({ description: 'Credenciales incorrectas' })
@@ -52,6 +54,7 @@ export class AuthController {
 
   @Post('request-otp')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Solicitar código OTP por correo' })
   @ApiOkResponse({ description: 'Respuesta siempre igual para no revelar si el correo existe' })
   requestOtp(@Body() dto: RequestOtpDto) {
@@ -60,6 +63,7 @@ export class AuthController {
 
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Verificar código OTP' })
   @ApiOkResponse({ description: 'Retorna tokens si el usuario existe, o requiresRegistration: true si no' })
   @ApiUnauthorizedResponse({ description: 'Código inválido o expirado' })
@@ -69,6 +73,7 @@ export class AuthController {
 
   @Post('request-password-reset')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Solicitar enlace de recuperación de contraseña' })
   @ApiOkResponse({ description: 'Respuesta siempre igual para no revelar si el correo existe' })
   requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
@@ -77,6 +82,7 @@ export class AuthController {
 
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Cambiar contraseña con token de recuperación' })
   @ApiOkResponse({ description: 'Contraseña actualizada — invalida todas las sesiones activas' })
   @ApiUnauthorizedResponse({ description: 'Token inválido o expirado' })

@@ -1,13 +1,19 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
+
+  // Render agrega un solo hop de proxy delante de la app: confiar solo en ese
+  // hop hace que req.ip refleje la IP real del cliente (vía X-Forwarded-For)
+  // sin aceptar ciegamente un header falsificado por el cliente.
+  app.set('trust proxy', 1);
 
   app.use(helmet());
 

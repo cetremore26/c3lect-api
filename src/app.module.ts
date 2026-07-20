@@ -21,7 +21,10 @@ import { MarcasModule } from './modules/marcas/marcas.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60000, limit: 100 }],
+      throttlers: [
+        { name: 'default', ttl: 60000, limit: 100 },
+        { name: 'auth', ttl: 60000, limit: 8 },
+      ],
     }),
     PrismaModule,
     ProductsModule,
