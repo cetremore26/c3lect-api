@@ -57,7 +57,7 @@ export class ProductsController {
     @CurrentUser() user: { id: string; rol: string; nombre?: string },
   ) {
     const product = await this.productsService.create(dto);
-    void this.auditService.log(
+    await this.auditService.log(
       'CREAR', 'producto', product.id,
       `Producto creado: ${product.display}`,
       user.id, user.nombre,
@@ -79,7 +79,7 @@ export class ProductsController {
     @CurrentUser() user: { id: string; rol: string; nombre?: string },
   ) {
     const product = await this.productsService.update(id, dto);
-    void this.auditService.log(
+    await this.auditService.log(
       'EDITAR', 'producto', id,
       `Producto editado: ${product.display}`,
       user.id, user.nombre,
@@ -101,7 +101,7 @@ export class ProductsController {
     @CurrentUser() user: { id: string; rol: string; nombre?: string },
   ) {
     const result = await this.productsService.remove(id);
-    void this.auditService.log(
+    await this.auditService.log(
       'ELIMINAR', 'producto', id,
       `Producto eliminado: ${id}`,
       user.id, user.nombre,

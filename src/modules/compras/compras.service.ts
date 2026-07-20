@@ -5,20 +5,9 @@ import { AuditService } from '../audit/audit.service';
 import { CreateCompraDto } from './dto/create-compra.dto';
 import { UpdateCompraDto } from './dto/update-compra.dto';
 import { combineMarcaModelo, findProductsByMarcaModelo } from '../../common/marca-modelo.util';
+import { categoriaDesdeCapitalizada, CATEGORIA_PREFIX, Categoria } from '../../common/categoria.util';
 
 const COSTO_ADICIONAL_DEFAULT = 25028;
-
-const CAT_MAP: Record<string, string> = {
-  Reloj: 'reloj',
-  Perfume: 'perfume',
-  Accesorio: 'accesorio',
-};
-
-const CAT_PREFIX: Record<string, string> = {
-  reloj: 'r',
-  perfume: 'p',
-  accesorio: 'a',
-};
 
 function slugify(s: string): string {
   return s
@@ -34,7 +23,7 @@ function slugify(s: string): string {
 
 // Convención de IDs del catálogo: {r|p|a}-marca-modelo(-estilo si aplica), ej. "r-curren-8442-blue-white".
 function buildProductId(cat: string, marca: string | null | undefined, modelo: string, estilo?: string): string {
-  const prefijo = CAT_PREFIX[cat] ?? 'r';
+  const prefijo = CATEGORIA_PREFIX[cat as Categoria] ?? 'r';
   const partes = [slugify(marca ?? ''), slugify(modelo), estilo ? slugify(estilo) : ''].filter(Boolean);
   return [prefijo, ...partes].join('-');
 }
@@ -234,7 +223,7 @@ export class ComprasService {
     const productos = await findProductsByMarcaModelo(tx, marca, modelo);
 
     if (productos.length === 0) {
-      const cat = CAT_MAP[categoria] ?? 'reloj';
+      const cat = categoriaDesdeCapitalizada(categoria);
       const nombreCompleto = combineMarcaModelo(marca, modelo);
       const id = buildProductId(cat, marca, modelo);
       try {
