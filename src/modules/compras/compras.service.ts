@@ -26,7 +26,7 @@ function slugify(s: string): string {
     .replace(/[íìîï]/g, 'i').replace(/[óòôö]/g, 'o')
     .replace(/[úùûü]/g, 'u').replace(/ñ/g, 'n')
     .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '')
+    .replace(/[^a-z0-9&-]/g, '')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 }
