@@ -17,8 +17,15 @@ async function bootstrap() {
 
   app.use(helmet());
 
+  // FRONTEND_URL puede incluir un path (ej. GitHub Pages: /boveda-c3lect-v2)
+  // porque también se usa para armar links completos (reset de password,
+  // back_urls de MercadoPago). El header Origin del navegador nunca trae
+  // path, así que CORS debe comparar solo contra el origen.
+  const frontendUrl = config.get<string>('FRONTEND_URL');
+  const corsOrigin = frontendUrl ? new URL(frontendUrl).origin : undefined;
+
   app.enableCors({
-    origin: config.get<string>('FRONTEND_URL'),
+    origin: corsOrigin,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
