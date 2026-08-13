@@ -96,7 +96,7 @@ export class PaymentsService {
       },
     });
 
-    const checkoutUrl = prefResult.sandbox_init_point ?? prefResult.init_point ?? '';
+    const checkoutUrl = prefResult.init_point ?? prefResult.sandbox_init_point ?? '';
 
     const payment = await this.prisma.payment.create({
       data: {
@@ -156,7 +156,7 @@ export class PaymentsService {
       },
     });
 
-    const checkoutUrl = prefResult.sandbox_init_point ?? prefResult.init_point ?? '';
+    const checkoutUrl = prefResult.init_point ?? prefResult.sandbox_init_point ?? '';
 
     const draftPayload: DraftPayload = {
       itemsData,
