@@ -236,6 +236,38 @@ export class MailService {
     if (error) this.logger.error('sendNewOrderAdmin error', error);
   }
 
+  async sendOrderStatusUpdateAdmin(
+    adminEmail: string,
+    orderNumber: string,
+    nuevoStatus: string,
+    clienteNombre: string,
+  ): Promise<void> {
+    const statusLabels: Record<string, string> = {
+      PENDIENTE:  'Pendiente de confirmación',
+      CONFIRMADO: 'Confirmado',
+      EN_CAMINO:  'En camino',
+      ENTREGADO:  'Entregado',
+      CANCELADO:  'Cancelado',
+    };
+    const label = statusLabels[nuevoStatus] ?? nuevoStatus;
+
+    const { error } = await this.resend.emails.send({
+      from: this.from,
+      to: adminEmail,
+      subject: `Pedido #${orderNumber} → ${label} — C3LECT`,
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
+          <h2 style="color:#111">Cambio de estado de pedido</h2>
+          <p style="color:#555">El pedido <strong>#${orderNumber}</strong> de <strong>${escapeHtml(clienteNombre)}</strong> cambió de estado.</p>
+          <div style="background:#f4f4f5;border-radius:8px;padding:16px;margin-top:16px;font-weight:600;color:#111">
+            ${label}
+          </div>
+        </div>
+      `,
+    });
+    if (error) this.logger.error('sendOrderStatusUpdateAdmin error', error);
+  }
+
   async sendStockAlert(adminEmail: string, orderNumber: string, detalle: string): Promise<void> {
     const { error } = await this.resend.emails.send({
       from: this.from,

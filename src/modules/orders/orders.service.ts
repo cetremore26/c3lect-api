@@ -303,6 +303,14 @@ export class OrdersService {
       void this.mail.sendOrderStatusUpdate(email, nombre, order.orderNumber, dto.status);
     }
 
+    // skipStatusEmail=true solo lo usa el flujo de MercadoPago para la transición
+    // PENDIENTE→CONFIRMADO automática — ahí el admin ya recibe el comprobante de
+    // pago (sendPaymentConfirmation), así que notificarlo aquí sería duplicado.
+    const adminEmail = this.config.get<string>('ADMIN_EMAIL');
+    if (adminEmail && !skipStatusEmail) {
+      void this.mail.sendOrderStatusUpdateAdmin(adminEmail, order.orderNumber, dto.status, nombre);
+    }
+
     await this.audit.log(
       'ESTADO', 'pedido', id,
       `Pedido ${order.orderNumber}: ${order.status} → ${dto.status}`,
