@@ -22,10 +22,20 @@ async function bootstrap() {
   // back_urls de MercadoPago). El header Origin del navegador nunca trae
   // path, así que CORS debe comparar solo contra el origen.
   const frontendUrl = config.get<string>('FRONTEND_URL');
-  const corsOrigin = frontendUrl ? new URL(frontendUrl).origin : undefined;
+  // CORS_EXTRA_ORIGINS: lista separada por comas de orígenes adicionales a
+  // permitir sin reemplazar FRONTEND_URL (ej. la URL *.pages.dev mientras se
+  // prueba la migración a Cloudflare Pages, antes de mover el DNS). Se quita
+  // una vez el corte de dominio esté completo.
+  const extraOrigins = (config.get<string>('CORS_EXTRA_ORIGINS') ?? '')
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+  const corsOrigins = [frontendUrl, ...extraOrigins]
+    .filter(Boolean)
+    .map((url) => new URL(url as string).origin);
 
   app.enableCors({
-    origin: corsOrigin,
+    origin: corsOrigins.length > 0 ? corsOrigins : undefined,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
