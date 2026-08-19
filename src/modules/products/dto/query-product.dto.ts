@@ -1,11 +1,20 @@
-import { IsOptional, IsString, IsBoolean, IsEnum, IsInt, MaxLength, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsBoolean,
+  IsEnum,
+  IsInt,
+  MaxLength,
+  Min,
+  Max,
+} from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum RangoPrecio {
-  BAJO  = '0-150',
+  BAJO = '0-150',
   MEDIO = '150-300',
-  ALTO  = '300+',
+  ALTO = '300+',
 }
 
 export class QueryProductDto {
@@ -38,13 +47,29 @@ export class QueryProductDto {
   @IsBoolean()
   soloDisponibles?: boolean;
 
-  @ApiPropertyOptional({ description: 'Solo productos pendientes por completar (sin precio, imágenes o estilo)', example: true })
+  @ApiPropertyOptional({
+    description: 'Solo productos marcados como destacados en el Home',
+    example: true,
+  })
+  @IsOptional()
+  @Transform(({ value }) => value === 'true')
+  @IsBoolean()
+  destacado?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Solo productos pendientes por completar (sin precio, imágenes o estilo)',
+    example: true,
+  })
   @IsOptional()
   @Transform(({ value }) => value === 'true')
   @IsBoolean()
   incompletos?: boolean;
 
-  @ApiPropertyOptional({ description: 'Si se envía, la respuesta queda paginada como { data, meta }', minimum: 1 })
+  @ApiPropertyOptional({
+    description: 'Si se envía, la respuesta queda paginada como { data, meta }',
+    minimum: 1,
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()

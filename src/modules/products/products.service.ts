@@ -24,15 +24,14 @@ export class ProductsService {
     if (query.soloDisponibles) {
       where.disponible = true;
     }
+    if (query.destacado) {
+      where.destacado = true;
+    }
     if (query.rangoPrecio) {
       where.precio = this.parsePriceRange(query.rangoPrecio);
     }
     if (query.incompletos) {
-      where.OR = [
-        { precio: 0 },
-        { estilo: '' },
-        { imgs: { equals: [] } },
-      ];
+      where.OR = [{ precio: 0 }, { estilo: '' }, { imgs: { equals: [] } }];
     }
 
     if (query.page == null && query.limit == null) {
@@ -42,7 +41,11 @@ export class ProductsService {
     const page = query.page ?? 1;
     const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
-    const { data, total } = await this.productsRepository.findAllPaginated(where, skip, limit);
+    const { data, total } = await this.productsRepository.findAllPaginated(
+      where,
+      skip,
+      limit,
+    );
 
     return {
       data,
@@ -68,9 +71,12 @@ export class ProductsService {
 
   private parsePriceRange(rango: RangoPrecio): Prisma.IntFilter {
     switch (rango) {
-      case RangoPrecio.BAJO:  return { gte: 0,   lte: 150 };
-      case RangoPrecio.MEDIO: return { gte: 150, lte: 300 };
-      case RangoPrecio.ALTO:  return { gte: 300 };
+      case RangoPrecio.BAJO:
+        return { gte: 0, lte: 150 };
+      case RangoPrecio.MEDIO:
+        return { gte: 150, lte: 300 };
+      case RangoPrecio.ALTO:
+        return { gte: 300 };
     }
   }
 }
