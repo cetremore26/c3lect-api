@@ -13,6 +13,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { MetricsModule } from './modules/metrics/metrics.module';
 import { UsersModule } from './modules/users/users.module';
+import { AccountModule } from './modules/account/account.module';
 import { VentasModule } from './modules/ventas/ventas.module';
 import { ComprasModule } from './modules/compras/compras.module';
 import { GastosModule } from './modules/gastos/gastos.module';
@@ -37,6 +38,7 @@ import { MarcasModule } from './modules/marcas/marcas.module';
     AuditModule,
     MetricsModule,
     UsersModule,
+    AccountModule,
     VentasModule,
     ComprasModule,
     GastosModule,

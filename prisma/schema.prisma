@@ -33,7 +33,11 @@ model Product {
   notasBase           String?  @map("notas_base")
   marca               String?
   genero              String?
+  destacado           Boolean  @default(false)
 
+  @@index([cat(ops: raw("gin_trgm_ops"))], type: Gin, map: "productos_cat_trgm_idx")
+  @@index([marca(ops: raw("gin_trgm_ops"))], type: Gin, map: "productos_marca_trgm_idx")
+  @@index([genero(ops: raw("gin_trgm_ops"))], type: Gin, map: "productos_genero_trgm_idx")
   @@map("productos")
 }
 
@@ -59,8 +63,29 @@ model User {
   refreshTokens  RefreshToken[]
   passwordResets PasswordReset[]
   orders         Order[]
+  addresses      Address[]
 
   @@map("users")
+}
+
+// Libreta de direcciones del usuario — separada de ShippingInfo (que es un
+// snapshot inmutable por pedido). Varias direcciones por usuario, una
+// marcada como principal a la vez (lo garantiza AccountService, no la BD).
+model Address {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  alias        String?
+  ciudad       String
+  departamento String
+  direccion    String
+  esPrincipal  Boolean  @default(false) @map("es_principal")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("addresses")
 }
 
 model RefreshToken {

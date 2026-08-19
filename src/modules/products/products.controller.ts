@@ -1,11 +1,25 @@
 import {
-  Controller, Get, Post, Patch, Delete,
-  Param, Body, Query, HttpCode, HttpStatus, UseGuards,
+  Controller,
+  Get,
+  Post,
+  Patch,
+  Delete,
+  Param,
+  Body,
+  Query,
+  HttpCode,
+  HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiTags, ApiOperation, ApiQuery,
-  ApiOkResponse, ApiCreatedResponse, ApiNotFoundResponse, ApiForbiddenResponse,
+  ApiTags,
+  ApiOperation,
+  ApiQuery,
+  ApiOkResponse,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
 import { QueryProductDto, RangoPrecio } from './dto/query-product.dto';
@@ -27,11 +41,12 @@ export class ProductsController {
 
   @Get()
   @ApiOperation({ summary: 'Listar productos con filtros opcionales' })
-  @ApiQuery({ name: 'categoria',       required: false, example: 'reloj' })
-  @ApiQuery({ name: 'marca',           required: false, example: 'Fossil' })
-  @ApiQuery({ name: 'genero',          required: false, example: 'Hombre' })
-  @ApiQuery({ name: 'rangoPrecio',     required: false, enum: RangoPrecio })
+  @ApiQuery({ name: 'categoria', required: false, example: 'reloj' })
+  @ApiQuery({ name: 'marca', required: false, example: 'Fossil' })
+  @ApiQuery({ name: 'genero', required: false, example: 'Hombre' })
+  @ApiQuery({ name: 'rangoPrecio', required: false, enum: RangoPrecio })
   @ApiQuery({ name: 'soloDisponibles', required: false, type: Boolean })
+  @ApiQuery({ name: 'destacado', required: false, type: Boolean })
   @ApiOkResponse({ description: 'Lista de productos' })
   findAll(@Query() query: QueryProductDto) {
     return this.productsService.findAll(query);
@@ -58,9 +73,12 @@ export class ProductsController {
   ) {
     const product = await this.productsService.create(dto);
     await this.auditService.log(
-      'CREAR', 'producto', product.id,
+      'CREAR',
+      'producto',
+      product.id,
       `Producto creado: ${product.display}`,
-      user.id, user.nombre,
+      user.id,
+      user.nombre,
     );
     return product;
   }
@@ -80,9 +98,12 @@ export class ProductsController {
   ) {
     const product = await this.productsService.update(id, dto);
     await this.auditService.log(
-      'EDITAR', 'producto', id,
+      'EDITAR',
+      'producto',
+      id,
       `Producto editado: ${product.display}`,
-      user.id, user.nombre,
+      user.id,
+      user.nombre,
     );
     return product;
   }
@@ -102,9 +123,12 @@ export class ProductsController {
   ) {
     const result = await this.productsService.remove(id);
     await this.auditService.log(
-      'ELIMINAR', 'producto', id,
+      'ELIMINAR',
+      'producto',
+      id,
       `Producto eliminado: ${id}`,
-      user.id, user.nombre,
+      user.id,
+      user.nombre,
     );
     return result;
   }

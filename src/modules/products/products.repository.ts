@@ -15,7 +15,11 @@ export class ProductsRepository {
     });
   }
 
-  async findAllPaginated(where: Prisma.ProductWhereInput, skip: number, take: number) {
+  async findAllPaginated(
+    where: Prisma.ProductWhereInput,
+    skip: number,
+    take: number,
+  ) {
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
@@ -37,31 +41,32 @@ export class ProductsRepository {
   create(data: CreateProductDto) {
     return this.prisma.product.create({
       data: {
-        id:               data.id,
-        nombre:           data.nombre,
-        estilo:           data.estilo,
-        display:          data.display,
-        precio:           data.precio,
-        disponible:       data.disponible ?? true,
-        cat:              data.cat,
-        marca:            data.marca,
-        genero:           data.genero,
-        imgs:             data.imgs ?? [],
-        specMovimiento:   data.specMovimiento,
-        specDimensiones:  data.specDimensiones,
-        specCaja:         data.specCaja,
-        specCorrea:       data.specCorrea,
-        specCristal:      data.specCristal,
-        specFunciones:    data.specFunciones,
+        id: data.id,
+        nombre: data.nombre,
+        estilo: data.estilo,
+        display: data.display,
+        precio: data.precio,
+        disponible: data.disponible ?? true,
+        destacado: data.destacado ?? false,
+        cat: data.cat,
+        marca: data.marca,
+        genero: data.genero,
+        imgs: data.imgs ?? [],
+        specMovimiento: data.specMovimiento,
+        specDimensiones: data.specDimensiones,
+        specCaja: data.specCaja,
+        specCorrea: data.specCorrea,
+        specCristal: data.specCristal,
+        specFunciones: data.specFunciones,
         specResistenciaAgua: data.specResistenciaAgua,
-        specPeso:         data.specPeso,
-        specBateria:      data.specBateria,
+        specPeso: data.specPeso,
+        specBateria: data.specBateria,
         specReservaMarcha: data.specReservaMarcha,
         specObservaciones: data.specObservaciones,
         notasDescripcion: data.notasDescripcion,
-        notasTop:         data.notasTop,
-        notasCorazon:     data.notasCorazon,
-        notasBase:        data.notasBase,
+        notasTop: data.notasTop,
+        notasCorazon: data.notasCorazon,
+        notasBase: data.notasBase,
       },
     });
   }
@@ -76,5 +81,4 @@ export class ProductsRepository {
     await this.prisma.product.delete({ where: { id } });
     return { message: `Producto "${id}" eliminado` };
   }
-
 }
