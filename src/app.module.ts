@@ -21,6 +21,7 @@ import { InventarioModule } from './modules/inventario/inventario.module';
 import { PreciosModule } from './modules/precios/precios.module';
 import { MarcasModule } from './modules/marcas/marcas.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
+import { MetaConversionsModule } from './modules/meta-conversions/meta-conversions.module';
 
 @Module({
   imports: [
@@ -47,6 +48,7 @@ import { PromotionsModule } from './modules/promotions/promotions.module';
     PreciosModule,
     MarcasModule,
     PromotionsModule,
+    MetaConversionsModule,
   ],
   controllers: [AppController],
   providers: [

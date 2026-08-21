@@ -163,6 +163,13 @@ model Order {
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
 
+  // Cookies de Meta Pixel capturadas en el checkout. Se guardan porque en la
+  // rama de MercadoPago el evento de Conversions API se envía cuando llega el
+  // webhook, minutos u horas después, y ahí ya no hay navegador que consultar.
+  // Sin fbc, Meta no puede atribuir la venta al clic del anuncio.
+  fbp           String?       @map("meta_fbp")
+  fbc           String?       @map("meta_fbc")
+
   user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   items           OrderItem[]
   shippingInfo    ShippingInfo?
