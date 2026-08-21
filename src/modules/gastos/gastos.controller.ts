@@ -1,4 +1,13 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { GastosService } from './gastos.service';
 import { CreateGastoDto } from './dto/create-gasto.dto';
@@ -6,6 +15,7 @@ import { UpdateGastoDto } from './dto/update-gasto.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 
 @ApiTags('Gastos')
 @Controller('gastos')
@@ -23,19 +33,23 @@ export class GastosController {
 
   @Post()
   @ApiOperation({ summary: 'Registrar nuevo gasto (ADMIN)' })
-  create(@Body() dto: CreateGastoDto) {
-    return this.gastosService.create(dto);
+  create(@Body() dto: CreateGastoDto, @CurrentUser() user: { id: string }) {
+    return this.gastosService.create(dto, user.id);
   }
 
   @Put(':id')
   @ApiOperation({ summary: 'Editar gasto (ADMIN)' })
-  update(@Param('id') id: string, @Body() dto: UpdateGastoDto) {
-    return this.gastosService.update(id, dto);
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateGastoDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.gastosService.update(id, dto, user.id);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Eliminar gasto (ADMIN)' })
-  remove(@Param('id') id: string) {
-    return this.gastosService.remove(id);
+  remove(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.gastosService.remove(id, user.id);
   }
 }

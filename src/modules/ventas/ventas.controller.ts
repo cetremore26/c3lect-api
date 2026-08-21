@@ -1,4 +1,12 @@
-import { Body, Controller, Delete, Param, Post, Put, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { VentasService } from './ventas.service';
 import { CreateVentaDto } from './dto/create-venta.dto';
@@ -6,6 +14,7 @@ import { UpdateVentaDto } from './dto/update-venta.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../../auth/guards/roles.guard';
 import { Roles } from '../../auth/decorators/roles.decorator';
+import { CurrentUser } from '../../auth/decorators/current-user.decorator';
 
 @ApiTags('Ventas')
 @Controller('ventas')
@@ -17,19 +26,28 @@ export class VentasController {
 
   @Post()
   @ApiOperation({ summary: 'Registrar nueva venta histórica (ADMIN)' })
-  create(@Body() dto: CreateVentaDto) {
-    return this.ventasService.create(dto);
+  create(@Body() dto: CreateVentaDto, @CurrentUser() user: { id: string }) {
+    return this.ventasService.create(dto, user.id);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Actualizar venta — recalcula saldo, ganancia y auto-cierra si abono >= precio (ADMIN)' })
-  update(@Param('id') id: string, @Body() dto: UpdateVentaDto) {
-    return this.ventasService.update(id, dto);
+  @ApiOperation({
+    summary:
+      'Actualizar venta — recalcula saldo, ganancia y auto-cierra si abono >= precio (ADMIN)',
+  })
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateVentaDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.ventasService.update(id, dto, user.id);
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Eliminar venta — revierte el descuento de inventario (ADMIN)' })
-  remove(@Param('id') id: string) {
-    return this.ventasService.remove(id);
+  @ApiOperation({
+    summary: 'Eliminar venta — revierte el descuento de inventario (ADMIN)',
+  })
+  remove(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.ventasService.remove(id, user.id);
   }
 }

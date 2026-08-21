@@ -4,17 +4,27 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateCompraDto } from './dto/create-compra.dto';
 import { UpdateCompraDto } from './dto/update-compra.dto';
-import { combineMarcaModelo, findProductsByMarcaModelo } from '../../common/marca-modelo.util';
-import { categoriaDesdeCapitalizada, CATEGORIA_PREFIX, Categoria } from '../../common/categoria.util';
+import {
+  combineMarcaModelo,
+  findProductsByMarcaModelo,
+} from '../../common/marca-modelo.util';
+import {
+  categoriaDesdeCapitalizada,
+  CATEGORIA_PREFIX,
+  Categoria,
+} from '../../common/categoria.util';
 
 const COSTO_ADICIONAL_DEFAULT = 25028;
 
 function slugify(s: string): string {
   return s
     .toLowerCase()
-    .replace(/[áàâä]/g, 'a').replace(/[éèêë]/g, 'e')
-    .replace(/[íìîï]/g, 'i').replace(/[óòôö]/g, 'o')
-    .replace(/[úùûü]/g, 'u').replace(/ñ/g, 'n')
+    .replace(/[áàâä]/g, 'a')
+    .replace(/[éèêë]/g, 'e')
+    .replace(/[íìîï]/g, 'i')
+    .replace(/[óòôö]/g, 'o')
+    .replace(/[úùûü]/g, 'u')
+    .replace(/ñ/g, 'n')
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9&-]/g, '')
     .replace(/-+/g, '-')
@@ -22,9 +32,18 @@ function slugify(s: string): string {
 }
 
 // Convención de IDs del catálogo: {r|p|a}-marca-modelo(-estilo si aplica), ej. "r-curren-8442-blue-white".
-function buildProductId(cat: string, marca: string | null | undefined, modelo: string, estilo?: string): string {
+function buildProductId(
+  cat: string,
+  marca: string | null | undefined,
+  modelo: string,
+  estilo?: string,
+): string {
   const prefijo = CATEGORIA_PREFIX[cat as Categoria] ?? 'r';
-  const partes = [slugify(marca ?? ''), slugify(modelo), estilo ? slugify(estilo) : ''].filter(Boolean);
+  const partes = [
+    slugify(marca ?? ''),
+    slugify(modelo),
+    estilo ? slugify(estilo) : '',
+  ].filter(Boolean);
   return [prefijo, ...partes].join('-');
 }
 
@@ -35,7 +54,7 @@ export class ComprasService {
     private readonly audit: AuditService,
   ) {}
 
-  async create(dto: CreateCompraDto) {
+  async create(dto: CreateCompraDto, userId?: string) {
     const costoTotal = dto.cantidad * dto.costoUnitario;
 
     const compra = await this.prisma.$transaction(async (tx) => {
@@ -71,7 +90,9 @@ export class ComprasService {
 
       // Precios: solo se crea la primera vez que se compra este modelo. Si ya existe, no se toca
       // — el precio ya está calculado y las compras posteriores del mismo producto no lo alteran.
-      const precioExistente = await tx.precioProducto.findUnique({ where: { modelo: dto.modelo } });
+      const precioExistente = await tx.precioProducto.findUnique({
+        where: { modelo: dto.modelo },
+      });
       if (!precioExistente) {
         await tx.precioProducto.create({
           data: {
@@ -86,31 +107,42 @@ export class ComprasService {
       }
 
       // Productos: crear stub si no existe, o habilitar si estaba deshabilitado
-      await this.syncProducto(tx, dto.marca, dto.modelo, dto.categoria, 'create');
+      await this.syncProducto(
+        tx,
+        dto.marca,
+        dto.modelo,
+        dto.categoria,
+        'create',
+      );
 
       return nuevaCompra;
     });
 
     await this.audit.log(
-      'CREAR', 'compra', compra.id,
+      'CREAR',
+      'compra',
+      compra.id,
       `Nueva compra: ${dto.cantidad}x ${combineMarcaModelo(dto.marca, dto.modelo)} — $${costoTotal.toLocaleString('es-CO')}`,
+      userId,
     );
 
     return compra;
   }
 
-  async update(id: string, dto: UpdateCompraDto) {
+  async update(id: string, dto: UpdateCompraDto, userId?: string) {
     const existing = await this.prisma.purchase.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException(`Compra ${id} no encontrada`);
 
-    const marca           = dto.marca         ?? existing.marca;
-    const modelo           = dto.modelo        ?? existing.modelo;
-    const cantidad          = dto.cantidad      ?? existing.cantidad;
-    const costoUnitario     = dto.costoUnitario ?? existing.costoUnitario;
-    const categoria         = dto.categoria     ?? existing.categoria;
-    const costoTotal        = cantidad * costoUnitario;
-    const modeloCambio      = dto.modelo && dto.modelo !== existing.modelo;
-    const identidadCambio   = Boolean(modeloCambio) || (dto.marca !== undefined && dto.marca !== existing.marca);
+    const marca = dto.marca ?? existing.marca;
+    const modelo = dto.modelo ?? existing.modelo;
+    const cantidad = dto.cantidad ?? existing.cantidad;
+    const costoUnitario = dto.costoUnitario ?? existing.costoUnitario;
+    const categoria = dto.categoria ?? existing.categoria;
+    const costoTotal = cantidad * costoUnitario;
+    const modeloCambio = dto.modelo && dto.modelo !== existing.modelo;
+    const identidadCambio =
+      Boolean(modeloCambio) ||
+      (dto.marca !== undefined && dto.marca !== existing.marca);
 
     const compra = await this.prisma.$transaction(async (tx) => {
       const compraActualizada = await tx.purchase.update({
@@ -134,7 +166,12 @@ export class ComprasService {
         });
         await tx.inventarioMaestro.upsert({
           where: { modelo },
-          update: { marca, stock: { increment: cantidad }, costoUnitario, categoria },
+          update: {
+            marca,
+            stock: { increment: cantidad },
+            costoUnitario,
+            categoria,
+          },
           create: { marca, modelo, stock: cantidad, costoUnitario, categoria },
         });
       } else {
@@ -199,8 +236,11 @@ export class ComprasService {
     });
 
     await this.audit.log(
-      'EDITAR', 'compra', id,
+      'EDITAR',
+      'compra',
+      id,
       `Compra editada: ${combineMarcaModelo(marca, modelo)} — ${cantidad} ud${cantidad !== 1 ? 's' : ''} a $${costoUnitario.toLocaleString('es-CO')}`,
+      userId,
     );
 
     return compra;
@@ -244,7 +284,9 @@ export class ComprasService {
         // ID duplicado por colisión de slug: ignorar, el producto ya existe con otro nombre similar
       }
     } else {
-      const aHabilitar = productos.filter((p) => !p.disponible).map((p) => p.id);
+      const aHabilitar = productos
+        .filter((p) => !p.disponible)
+        .map((p) => p.id);
       if (aHabilitar.length > 0) {
         // Tenemos stock de nuevo — habilitar variantes
         await tx.product.updateMany({
@@ -253,7 +295,9 @@ export class ComprasService {
         });
       }
       // Si el producto ya existe pero todavía no tiene marca registrada, completarla ahora.
-      const sinMarca = productos.filter((p) => marca && !p.marca).map((p) => p.id);
+      const sinMarca = productos
+        .filter((p) => marca && !p.marca)
+        .map((p) => p.id);
       if (sinMarca.length > 0) {
         await tx.product.updateMany({
           where: { id: { in: sinMarca } },
