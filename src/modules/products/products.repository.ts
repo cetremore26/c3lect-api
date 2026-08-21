@@ -8,22 +8,29 @@ import { UpdateProductDto } from './dto/update-product.dto';
 export class ProductsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(where: Prisma.ProductWhereInput) {
-    return this.prisma.product.findMany({
-      where,
-      orderBy: [{ disponible: 'desc' }, { nombre: 'asc' }],
-    });
+  findAll(
+    where: Prisma.ProductWhereInput,
+    orderBy: Prisma.ProductOrderByWithRelationInput[] = [
+      { disponible: 'desc' },
+      { nombre: 'asc' },
+    ],
+  ) {
+    return this.prisma.product.findMany({ where, orderBy });
   }
 
   async findAllPaginated(
     where: Prisma.ProductWhereInput,
     skip: number,
     take: number,
+    orderBy: Prisma.ProductOrderByWithRelationInput[] = [
+      { disponible: 'desc' },
+      { nombre: 'asc' },
+    ],
   ) {
     const [data, total] = await Promise.all([
       this.prisma.product.findMany({
         where,
-        orderBy: [{ disponible: 'desc' }, { nombre: 'asc' }],
+        orderBy,
         skip,
         take,
       }),
@@ -48,6 +55,7 @@ export class ProductsRepository {
         precio: data.precio,
         disponible: data.disponible ?? true,
         destacado: data.destacado ?? false,
+        destacadoOrden: data.destacadoOrden ?? null,
         cat: data.cat,
         marca: data.marca,
         genero: data.genero,

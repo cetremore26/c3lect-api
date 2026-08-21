@@ -56,6 +56,15 @@ export class CreateProductDto {
   @IsBoolean()
   destacado?: boolean;
 
+  @ApiPropertyOptional({
+    example: 1,
+    description:
+      'Orden dentro del carrusel de destacados (menor número = aparece primero)',
+  })
+  @IsOptional()
+  @IsInt()
+  destacadoOrden?: number;
+
   @ApiProperty({ example: 'reloj', enum: CATEGORIAS })
   @IsIn(CATEGORIAS)
   cat: string;

@@ -34,6 +34,7 @@ model Product {
   marca               String?
   genero              String?
   destacado           Boolean  @default(false)
+  destacadoOrden      Int?     @map("destacado_orden")
 
   @@index([cat(ops: raw("gin_trgm_ops"))], type: Gin, map: "productos_cat_trgm_idx")
   @@index([marca(ops: raw("gin_trgm_ops"))], type: Gin, map: "productos_marca_trgm_idx")
@@ -310,6 +311,34 @@ model Expense {
   createdAt   DateTime @default(now()) @map("created_at")
 
   @@map("expenses")
+}
+
+// ─── Promociones ──────────────────────────────────────────────────────────────
+
+enum PromotionScope {
+  PRODUCTO
+  CATEGORIA
+  MARCA
+  TODOS
+}
+
+model Promotion {
+  id                 String         @id @default(uuid())
+  nombre             String
+  alcance            PromotionScope
+  porcentaje         Int
+  productosIncluidos String[]       @default([]) @map("productos_incluidos")
+  categoria          String?
+  marca              String?
+  excluidos          String[]       @default([])
+  soloCuentaActiva   Boolean        @default(false) @map("solo_cuenta_activa")
+  fechaInicio        DateTime       @map("fecha_inicio")
+  fechaFin           DateTime       @map("fecha_fin")
+  activo             Boolean        @default(true)
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  @@map("promociones")
 }
 
 // ─── Payments ─────────────────────────────────────────────────────────────────

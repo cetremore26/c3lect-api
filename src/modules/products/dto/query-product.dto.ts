@@ -17,6 +17,15 @@ export enum RangoPrecio {
   ALTO = '300+',
 }
 
+export enum ProductSortBy {
+  PRECIO = 'precio',
+}
+
+export enum SortOrder {
+  ASC = 'asc',
+  DESC = 'desc',
+}
+
 export class QueryProductDto {
   @ApiPropertyOptional({ example: 'reloj' })
   @IsOptional()
@@ -83,4 +92,14 @@ export class QueryProductDto {
   @Min(1)
   @Max(100)
   limit?: number;
+
+  @ApiPropertyOptional({ enum: ProductSortBy, example: ProductSortBy.PRECIO })
+  @IsOptional()
+  @IsEnum(ProductSortBy)
+  sortBy?: ProductSortBy;
+
+  @ApiPropertyOptional({ enum: SortOrder, example: SortOrder.ASC })
+  @IsOptional()
+  @IsEnum(SortOrder)
+  sortOrder?: SortOrder;
 }

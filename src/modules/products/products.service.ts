@@ -1,7 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { ProductsRepository } from './products.repository';
-import { QueryProductDto, RangoPrecio } from './dto/query-product.dto';
+import {
+  QueryProductDto,
+  RangoPrecio,
+  ProductSortBy,
+  SortOrder,
+} from './dto/query-product.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 
@@ -21,8 +26,8 @@ export class ProductsService {
     if (query.genero) {
       where.genero = { equals: query.genero, mode: 'insensitive' };
     }
-    if (query.soloDisponibles) {
-      where.disponible = true;
+    if (query.soloDisponibles !== undefined) {
+      where.disponible = query.soloDisponibles;
     }
     if (query.destacado) {
       where.destacado = true;
@@ -34,8 +39,10 @@ export class ProductsService {
       where.OR = [{ precio: 0 }, { estilo: '' }, { imgs: { equals: [] } }];
     }
 
+    const orderBy = this.buildOrderBy(query.sortBy, query.sortOrder);
+
     if (query.page == null && query.limit == null) {
-      return this.productsRepository.findAll(where);
+      return this.productsRepository.findAll(where, orderBy);
     }
 
     const page = query.page ?? 1;
@@ -45,6 +52,7 @@ export class ProductsService {
       where,
       skip,
       limit,
+      orderBy,
     );
 
     return {
@@ -67,6 +75,16 @@ export class ProductsService {
 
   remove(id: string) {
     return this.productsRepository.remove(id);
+  }
+
+  private buildOrderBy(
+    sortBy?: ProductSortBy,
+    sortOrder?: SortOrder,
+  ): Prisma.ProductOrderByWithRelationInput[] {
+    if (sortBy === ProductSortBy.PRECIO) {
+      return [{ precio: sortOrder ?? SortOrder.ASC }];
+    }
+    return [{ disponible: 'desc' }, { nombre: 'asc' }];
   }
 
   private parsePriceRange(rango: RangoPrecio): Prisma.IntFilter {
