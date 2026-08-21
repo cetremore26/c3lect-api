@@ -9,12 +9,14 @@ import { calcGananciaPorVenta } from '../metrics/metrics.service';
 import { CreateVentaDto } from './dto/create-venta.dto';
 import { UpdateVentaDto } from './dto/update-venta.dto';
 import { combineMarcaModelo } from '../../common/marca-modelo.util';
+import { MetaConversionsService } from '../meta-conversions/meta-conversions.service';
 
 @Injectable()
 export class VentasService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly metaConversions: MetaConversionsService,
   ) {}
 
   async create(dto: CreateVentaDto, userId?: string) {
@@ -93,6 +95,32 @@ export class VentasService {
       `Nueva venta: ${combineMarcaModelo(dto.marca, dto.modelo)} — ${dto.cliente} (${dto.estado})`,
       userId,
     );
+
+    // Devolverle a Meta la señal de las ventas que se cierran por chat.
+    // Sin esto, Meta solo ve las compras del checkout web —una fracción del
+    // negocio— y termina optimizando las campañas hacia el público equivocado.
+    //
+    // Condiciones: que venga de un canal digital que la pauta pueda influir,
+    // que haya celular para identificar al cliente, y que sea una venta real
+    // (precioVenta > 0 excluye "Uso Personal").
+    const canalesDigitales = ['WhatsApp', 'Instagram'];
+    if (
+      dto.fuente &&
+      canalesDigitales.includes(dto.fuente) &&
+      dto.celular &&
+      dto.precioVenta > 0
+    ) {
+      void this.metaConversions.sendOfflinePurchase({
+        ventaId: venta.id,
+        total: dto.precioVenta,
+        user: {
+          phone: dto.celular,
+          firstName: dto.cliente.trim().split(' ')[0],
+          lastName: dto.cliente.trim().split(' ').slice(1).join(' '),
+        },
+        eventTime: Math.floor(new Date(dto.fecha).getTime() / 1000),
+      });
+    }
 
     return venta;
   }
