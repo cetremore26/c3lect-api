@@ -15,6 +15,7 @@ import { OrdersService, buildOrderNumber } from '../orders/orders.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { CreatePendingPaymentDto } from './dto/create-pending-payment.dto';
 import { WebhookPaymentDto } from './dto/webhook-payment.dto';
+import { MetaConversionsService } from '../meta-conversions/meta-conversions.service';
 
 interface DraftPayload {
   itemsData: { productId: string; nombre: string; precioUnitario: number; cantidad: number; subtotal: number }[];
@@ -22,6 +23,10 @@ interface DraftPayload {
   total: number;
   shippingInfo: { nombreCompleto: string; email: string; telefono: string; ciudad: string; departamento: string; direccion: string; notas?: string };
   userId: string | null;
+  // Cookies de Meta Pixel congeladas junto al resto del borrador: cuando
+  // llegue el webhook, el navegador del cliente ya no estará disponible.
+  fbp?: string | null;
+  fbc?: string | null;
 }
 
 // Removes diacritics so standard PDF fonts (WinAnsi) render all chars correctly
@@ -50,6 +55,7 @@ export class PaymentsService {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     private readonly ordersService: OrdersService,
+    private readonly metaConversions: MetaConversionsService,
   ) {}
 
   // ─── Create payment preference ───────────────────────────────────────────────
@@ -164,6 +170,8 @@ export class PaymentsService {
       total,
       shippingInfo: dto.shippingInfo,
       userId: userId ?? null,
+      fbp: dto.fbp ?? null,
+      fbc: dto.fbc ?? null,
     };
 
     const payment = await this.prisma.payment.create({
@@ -279,7 +287,25 @@ export class PaymentsService {
   // ─── Private helpers ──────────────────────────────────────────────────────────
 
   private async handleApproved(orderNumber: string, payment: Payment): Promise<void> {
-    let order: { id: string; orderNumber: string; total: number; shippingInfo: { email: string; nombreCompleto: string } | null; items: { nombre: string; cantidad: number; precioUnitario: number; subtotal: number }[] };
+    // Se amplió respecto del tipo original: el evento de Meta necesita
+    // productId de cada item, el teléfono/ciudad/departamento del cliente y
+    // las cookies fbp/fbc del pedido. Todos ya venían en las consultas — solo
+    // faltaba declararlos aquí.
+    let order: {
+      id: string;
+      orderNumber: string;
+      total: number;
+      fbp: string | null;
+      fbc: string | null;
+      shippingInfo: {
+        email: string;
+        nombreCompleto: string;
+        telefono: string;
+        ciudad: string;
+        departamento: string;
+      } | null;
+      items: { productId: string; nombre: string; cantidad: number; precioUnitario: number; subtotal: number }[];
+    };
 
     if (payment.orderId) {
       // Compatibilidad con el flujo viejo (POST /payments/create sobre un
@@ -328,6 +354,8 @@ export class PaymentsService {
           total: draft.total,
           shippingInfo: draft.shippingInfo,
           userId: draft.userId,
+          fbp: draft.fbp,
+          fbc: draft.fbc,
         });
         order = created;
       } catch (err) {
@@ -372,6 +400,27 @@ export class PaymentsService {
         pdfBuffer,
       );
     }
+
+    // Purchase por Conversions API. Esta es la fuente de verdad del evento:
+    // se manda desde el servidor cuando el pago está confirmado de verdad, sin
+    // depender de bloqueadores ni de que el navegador del cliente siga abierto.
+    // El event_id es orderNumber — el mismo external_reference que se envió a
+    // MercadoPago — para que Meta deduplique contra el evento del navegador.
+    void this.metaConversions.sendPurchase({
+      orderNumber: order.orderNumber,
+      total: order.total,
+      contentIds: order.items.map((i) => i.productId),
+      user: {
+        email: order.shippingInfo?.email,
+        phone: order.shippingInfo?.telefono,
+        firstName: order.shippingInfo?.nombreCompleto?.trim().split(' ')[0],
+        lastName: order.shippingInfo?.nombreCompleto?.trim().split(' ').slice(1).join(' '),
+        city: order.shippingInfo?.ciudad,
+        state: order.shippingInfo?.departamento,
+        fbp: order.fbp,
+        fbc: order.fbc,
+      },
+    });
   }
 
   private async handleRejected(orderNumber: string, payment: Payment): Promise<void> {

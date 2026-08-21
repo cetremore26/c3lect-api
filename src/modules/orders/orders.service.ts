@@ -17,6 +17,7 @@ import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
 import { QueryOrdersDto } from './dto/query-orders.dto';
 import { deriveMarcaModeloFromProduct } from '../../common/marca-modelo.util';
+import { MetaConversionsService } from '../meta-conversions/meta-conversions.service';
 
 const VALID_TRANSITIONS: Record<EstadoPedido, EstadoPedido[]> = {
   PENDIENTE:  [EstadoPedido.CONFIRMADO, EstadoPedido.CANCELADO],
@@ -63,6 +64,7 @@ export class OrdersService {
     private readonly config: ConfigService,
     private readonly audit: AuditService,
     private readonly promotions: PromotionsService,
+    private readonly metaConversions: MetaConversionsService,
   ) {}
 
   // Resuelve precios server-side (nunca confía en lo que envía el cliente) y
@@ -151,6 +153,8 @@ export class OrdersService {
           subtotal,
           total,
           paymentMethod: dto.metodoPago,
+          fbp: dto.fbp ?? null,
+          fbc: dto.fbc ?? null,
           items: { create: itemsData },
           shippingInfo: { create: dto.shippingInfo },
           statusHistory: {
@@ -182,6 +186,26 @@ export class OrdersService {
     if (adminEmail) {
       void this.mail.sendNewOrderAdmin(adminEmail, order.orderNumber, nombreCliente, order.total, order.items);
     }
+
+    // Purchase por Conversions API para los pedidos que NO pasan por
+    // MercadoPago (contraentrega y transferencia). Estos nunca llegan al
+    // webhook de payments, así que sin este envío Meta no se entera de ellos.
+    // Va con `void` como los correos: el pedido no debe esperar a Meta.
+    void this.metaConversions.sendPurchase({
+      orderNumber: order.orderNumber,
+      total: order.total,
+      contentIds: order.items.map((i) => i.productId),
+      user: {
+        email: dto.shippingInfo.email,
+        phone: dto.shippingInfo.telefono,
+        firstName: nombreCliente.trim().split(' ')[0],
+        lastName: nombreCliente.trim().split(' ').slice(1).join(' '),
+        city: dto.shippingInfo.ciudad,
+        state: dto.shippingInfo.departamento,
+        fbp: order.fbp,
+        fbc: order.fbc,
+      },
+    });
 
     return order;
   }
@@ -350,8 +374,10 @@ export class OrdersService {
     total: number;
     shippingInfo: CreateOrderDto['shippingInfo'];
     userId?: string | null;
+    fbp?: string | null;
+    fbc?: string | null;
   }) {
-    const { orderNumber, itemsData, subtotal, total, shippingInfo, userId } = params;
+    const { orderNumber, itemsData, subtotal, total, shippingInfo, userId, fbp, fbc } = params;
 
     const order = await this.prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
@@ -362,6 +388,8 @@ export class OrdersService {
           total,
           paymentMethod: MetodoPago.MERCADOPAGO,
           status: EstadoPedido.CONFIRMADO,
+          fbp: fbp ?? null,
+          fbc: fbc ?? null,
           items: { create: itemsData },
           shippingInfo: { create: shippingInfo },
           statusHistory: {
