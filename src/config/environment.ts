@@ -55,6 +55,21 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   NODE_ENV?: string;
+
+  // Meta Conversions API. Opcionales a propósito: si faltan, el servicio se
+  // desactiva solo y la app arranca igual. Así el backend sigue funcionando
+  // en local y en cualquier entorno donde no se quiera enviar eventos.
+  @IsOptional()
+  @IsString()
+  META_PIXEL_ID?: string;
+
+  @IsOptional()
+  @IsString()
+  META_CAPI_ACCESS_TOKEN?: string;
+
+  @IsOptional()
+  @IsString()
+  META_CAPI_TEST_EVENT_CODE?: string;
 }
 
 export function validate(config: Record<string, unknown>) {
