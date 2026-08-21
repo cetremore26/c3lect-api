@@ -20,6 +20,7 @@ import { GastosModule } from './modules/gastos/gastos.module';
 import { InventarioModule } from './modules/inventario/inventario.module';
 import { PreciosModule } from './modules/precios/precios.module';
 import { MarcasModule } from './modules/marcas/marcas.module';
+import { PromotionsModule } from './modules/promotions/promotions.module';
 
 @Module({
   imports: [
@@ -45,6 +46,7 @@ import { MarcasModule } from './modules/marcas/marcas.module';
     InventarioModule,
     PreciosModule,
     MarcasModule,
+    PromotionsModule,
   ],
   controllers: [AppController],
   providers: [

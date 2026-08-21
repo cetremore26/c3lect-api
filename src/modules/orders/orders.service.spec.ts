@@ -66,12 +66,14 @@ describe('OrdersService.updateStatus', () => {
     const mail = { sendOrderStatusUpdate: jest.fn() };
     const config = { get: jest.fn() };
     const audit = { log: jest.fn() };
+    const promotions = { getPromocionesVigentes: jest.fn().mockResolvedValue([]) };
 
     const service = new OrdersService(
       prisma as any,
       mail as any,
       config as any,
       audit as any,
+      promotions as any,
     );
     return { service, prisma, tx, mail, audit };
   }
@@ -248,11 +250,13 @@ describe('OrdersService.resolveItems', () => {
       product: { findMany: jest.fn().mockResolvedValue(products) },
       inventarioMaestro: { findFirst: jest.fn().mockResolvedValue(inventario) },
     };
+    const promotions = { getPromocionesVigentes: jest.fn().mockResolvedValue([]) };
     const service = new OrdersService(
       prisma as any,
       {} as any,
       {} as any,
       {} as any,
+      promotions as any,
     );
     return { service, prisma };
   }

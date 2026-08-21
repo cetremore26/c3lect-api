@@ -10,6 +10,8 @@ import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
 import { AuditService } from '../audit/audit.service';
+import { PromotionsService } from '../promotions/promotions.service';
+import { mejorDescuento, calcularPrecioFinal } from '../promotions/promotions.util';
 import { calcGananciaPorVenta } from '../metrics/metrics.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -60,13 +62,18 @@ export class OrdersService {
     private readonly mail: MailService,
     private readonly config: ConfigService,
     private readonly audit: AuditService,
+    private readonly promotions: PromotionsService,
   ) {}
 
   // Resuelve precios server-side (nunca confía en lo que envía el cliente) y
   // hace una verificación best-effort de stock. El guard autoritativo sigue
   // siendo el de aplicarConfirmacion, que vuelve a revisar el stock justo
-  // antes de confirmar/materializar el pedido.
-  async resolveItems(items: { productId: string; cantidad: number }[]): Promise<ResolvedItems> {
+  // antes de confirmar/materializar el pedido. `autenticado` determina si
+  // aplican promociones con soloCuentaActiva=true (ver modules/promotions).
+  async resolveItems(
+    items: { productId: string; cantidad: number }[],
+    autenticado = false,
+  ): Promise<ResolvedItems> {
     const productIds = items.map((i) => i.productId);
     const products = await this.prisma.product.findMany({
       where: { id: { in: productIds }, disponible: true },
@@ -80,15 +87,19 @@ export class OrdersService {
       );
     }
 
+    const promocionesVigentes = await this.promotions.getPromocionesVigentes();
+
     const productMap = new Map(products.map((p) => [p.id, p]));
     const itemsData = items.map((item) => {
       const product = productMap.get(item.productId)!;
+      const descuentoPorcentaje = mejorDescuento(promocionesVigentes, product, autenticado);
+      const precioUnitario = calcularPrecioFinal(product.precio, descuentoPorcentaje);
       return {
         productId: item.productId,
         nombre: product.nombre,
-        precioUnitario: product.precio,
+        precioUnitario,
         cantidad: item.cantidad,
-        subtotal: product.precio * item.cantidad,
+        subtotal: precioUnitario * item.cantidad,
       };
     });
 
@@ -129,7 +140,7 @@ export class OrdersService {
   }
 
   async createOrder(dto: CreateOrderDto, userId?: string) {
-    const { itemsData, subtotal, total } = await this.resolveItems(dto.items);
+    const { itemsData, subtotal, total } = await this.resolveItems(dto.items, !!userId);
     const orderNumber = buildOrderNumber();
 
     const order = await this.prisma.$transaction(async (tx) => {

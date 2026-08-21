@@ -123,7 +123,7 @@ export class PaymentsService {
   // nunca deja un pedido huérfano en PENDIENTE.
 
   async createPendingOrderPayment(dto: CreatePendingPaymentDto, userId?: string) {
-    const { itemsData, subtotal, total } = await this.ordersService.resolveItems(dto.items);
+    const { itemsData, subtotal, total } = await this.ordersService.resolveItems(dto.items, !!userId);
     const orderNumber = buildOrderNumber();
 
     const accessToken = this.config.getOrThrow<string>('MP_ACCESS_TOKEN');

@@ -22,7 +22,12 @@ import {
   ApiForbiddenResponse,
 } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
-import { QueryProductDto, RangoPrecio } from './dto/query-product.dto';
+import {
+  QueryProductDto,
+  RangoPrecio,
+  ProductSortBy,
+  SortOrder,
+} from './dto/query-product.dto';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
@@ -47,6 +52,8 @@ export class ProductsController {
   @ApiQuery({ name: 'rangoPrecio', required: false, enum: RangoPrecio })
   @ApiQuery({ name: 'soloDisponibles', required: false, type: Boolean })
   @ApiQuery({ name: 'destacado', required: false, type: Boolean })
+  @ApiQuery({ name: 'sortBy', required: false, enum: ProductSortBy })
+  @ApiQuery({ name: 'sortOrder', required: false, enum: SortOrder })
   @ApiOkResponse({ description: 'Lista de productos' })
   findAll(@Query() query: QueryProductDto) {
     return this.productsService.findAll(query);
