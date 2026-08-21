@@ -76,7 +76,7 @@ export class ProductsController {
   @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async create(
     @Body() dto: CreateProductDto,
-    @CurrentUser() user: { id: string; rol: string; nombre?: string },
+    @CurrentUser() user: { id: string; rol: string },
   ) {
     const product = await this.productsService.create(dto);
     await this.auditService.log(
@@ -85,7 +85,6 @@ export class ProductsController {
       product.id,
       `Producto creado: ${product.display}`,
       user.id,
-      user.nombre,
     );
     return product;
   }
@@ -101,7 +100,7 @@ export class ProductsController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateProductDto,
-    @CurrentUser() user: { id: string; rol: string; nombre?: string },
+    @CurrentUser() user: { id: string; rol: string },
   ) {
     const product = await this.productsService.update(id, dto);
     await this.auditService.log(
@@ -110,7 +109,6 @@ export class ProductsController {
       id,
       `Producto editado: ${product.display}`,
       user.id,
-      user.nombre,
     );
     return product;
   }
@@ -126,7 +124,7 @@ export class ProductsController {
   @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })
   async remove(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; rol: string; nombre?: string },
+    @CurrentUser() user: { id: string; rol: string },
   ) {
     const result = await this.productsService.remove(id);
     await this.auditService.log(
@@ -135,7 +133,6 @@ export class ProductsController {
       id,
       `Producto eliminado: ${id}`,
       user.id,
-      user.nombre,
     );
     return result;
   }

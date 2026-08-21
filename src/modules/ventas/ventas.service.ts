@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { calcGananciaPorVenta } from '../metrics/metrics.service';
@@ -13,9 +17,16 @@ export class VentasService {
     private readonly audit: AuditService,
   ) {}
 
-  async create(dto: CreateVentaDto) {
-    const saldoPendiente = dto.precioVenta > 0 ? Math.max(0, dto.precioVenta - dto.abono) : 0;
-    const gananciaNeta = calcGananciaPorVenta(dto.estado, dto.precioVenta, dto.costoProducto, dto.costoEnvio, dto.abono);
+  async create(dto: CreateVentaDto, userId?: string) {
+    const saldoPendiente =
+      dto.precioVenta > 0 ? Math.max(0, dto.precioVenta - dto.abono) : 0;
+    const gananciaNeta = calcGananciaPorVenta(
+      dto.estado,
+      dto.precioVenta,
+      dto.costoProducto,
+      dto.costoEnvio,
+      dto.abono,
+    );
 
     const venta = await this.prisma.$transaction(async (tx) => {
       const nuevaVenta = await tx.historicalSale.create({
@@ -57,11 +68,16 @@ export class VentasService {
         }
 
         // Si el stock llega a 0, deshabilitar todas las variantes de este modelo (mismo nombre)
-        const invActualizado = await tx.inventarioMaestro.findUniqueOrThrow({ where: { id: inv.id } });
+        const invActualizado = await tx.inventarioMaestro.findUniqueOrThrow({
+          where: { id: inv.id },
+        });
         if (invActualizado.stock <= 0) {
           const nombreCompleto = combineMarcaModelo(dto.marca, dto.modelo);
           await tx.product.updateMany({
-            where: { nombre: { equals: nombreCompleto, mode: 'insensitive' }, disponible: true },
+            where: {
+              nombre: { equals: nombreCompleto, mode: 'insensitive' },
+              disponible: true,
+            },
             data: { disponible: false },
           });
         }
@@ -71,40 +87,52 @@ export class VentasService {
     });
 
     await this.audit.log(
-      'CREAR', 'venta', venta.id,
+      'CREAR',
+      'venta',
+      venta.id,
       `Nueva venta: ${combineMarcaModelo(dto.marca, dto.modelo)} — ${dto.cliente} (${dto.estado})`,
+      userId,
     );
 
     return venta;
   }
 
-  async update(id: string, dto: UpdateVentaDto) {
-    const existing = await this.prisma.historicalSale.findUnique({ where: { id } });
+  async update(id: string, dto: UpdateVentaDto, userId?: string) {
+    const existing = await this.prisma.historicalSale.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException(`Venta ${id} no encontrada`);
 
-    const precioVenta   = dto.precioVenta   ?? existing.precioVenta;
+    const precioVenta = dto.precioVenta ?? existing.precioVenta;
     const costoProducto = dto.costoProducto ?? existing.costoProducto;
-    const costoEnvio    = dto.costoEnvio    ?? existing.costoEnvio;
-    const abono         = dto.abono         ?? existing.abono;
+    const costoEnvio = dto.costoEnvio ?? existing.costoEnvio;
+    const abono = dto.abono ?? existing.abono;
 
     let estado = dto.estado ?? existing.estado;
     if (precioVenta > 0 && abono >= precioVenta) {
       estado = 'Pagado';
     }
 
-    const saldoPendiente = precioVenta > 0 ? Math.max(0, precioVenta - abono) : 0;
-    const gananciaNeta   = calcGananciaPorVenta(estado, precioVenta, costoProducto, costoEnvio, abono);
+    const saldoPendiente =
+      precioVenta > 0 ? Math.max(0, precioVenta - abono) : 0;
+    const gananciaNeta = calcGananciaPorVenta(
+      estado,
+      precioVenta,
+      costoProducto,
+      costoEnvio,
+      abono,
+    );
 
     const venta = await this.prisma.historicalSale.update({
       where: { id },
       data: {
-        fecha:          dto.fecha    ? new Date(dto.fecha)             : existing.fecha,
-        cliente:        dto.cliente  ?? existing.cliente,
-        celular:        dto.celular  !== undefined ? dto.celular        : existing.celular,
-        marca:          dto.marca    ?? existing.marca,
-        modelo:         dto.modelo   ?? existing.modelo,
-        estilo:         dto.estilo   !== undefined ? dto.estilo         : existing.estilo,
-        fuente:         dto.fuente   !== undefined ? dto.fuente         : existing.fuente,
+        fecha: dto.fecha ? new Date(dto.fecha) : existing.fecha,
+        cliente: dto.cliente ?? existing.cliente,
+        celular: dto.celular !== undefined ? dto.celular : existing.celular,
+        marca: dto.marca ?? existing.marca,
+        modelo: dto.modelo ?? existing.modelo,
+        estilo: dto.estilo !== undefined ? dto.estilo : existing.estilo,
+        fuente: dto.fuente !== undefined ? dto.fuente : existing.fuente,
         precioVenta,
         costoProducto,
         costoEnvio,
@@ -116,15 +144,20 @@ export class VentasService {
     });
 
     await this.audit.log(
-      'EDITAR', 'venta', id,
+      'EDITAR',
+      'venta',
+      id,
       `Venta editada: ${venta.modelo} — ${venta.cliente} | Abono: ${abono} | Estado: ${estado}`,
+      userId,
     );
 
     return venta;
   }
 
-  async remove(id: string) {
-    const existing = await this.prisma.historicalSale.findUnique({ where: { id } });
+  async remove(id: string, userId?: string) {
+    const existing = await this.prisma.historicalSale.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException(`Venta ${id} no encontrada`);
 
     // TODO: si existing.orderId está presente, esta venta fue generada por
@@ -143,19 +176,30 @@ export class VentasService {
       });
 
       // Si el stock vuelve a ser positivo, re-habilitar las variantes de este modelo
-      const inv = await tx.inventarioMaestro.findUnique({ where: { modelo: existing.modelo } });
+      const inv = await tx.inventarioMaestro.findUnique({
+        where: { modelo: existing.modelo },
+      });
       if (inv && inv.stock > 0) {
-        const nombreCompleto = combineMarcaModelo(existing.marca, existing.modelo);
+        const nombreCompleto = combineMarcaModelo(
+          existing.marca,
+          existing.modelo,
+        );
         await tx.product.updateMany({
-          where: { nombre: { equals: nombreCompleto, mode: 'insensitive' }, disponible: false },
+          where: {
+            nombre: { equals: nombreCompleto, mode: 'insensitive' },
+            disponible: false,
+          },
           data: { disponible: true },
         });
       }
     });
 
     await this.audit.log(
-      'ELIMINAR', 'venta', id,
+      'ELIMINAR',
+      'venta',
+      id,
       `Venta eliminada: ${existing.modelo} — ${existing.cliente}`,
+      userId,
     );
 
     return { mensaje: 'Venta eliminada correctamente' };

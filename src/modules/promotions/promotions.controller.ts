@@ -64,7 +64,7 @@ export class PromotionsController {
   @ApiCreatedResponse({ description: 'Promoción creada' })
   async create(
     @Body() dto: CreatePromotionDto,
-    @CurrentUser() user: { id: string; rol: string; nombre?: string },
+    @CurrentUser() user: { id: string; rol: string },
   ) {
     const promo = await this.promotionsService.create(dto);
     await this.auditService.log(
@@ -73,7 +73,6 @@ export class PromotionsController {
       promo.id,
       `Promoción creada: ${promo.nombre}`,
       user.id,
-      user.nombre,
     );
     return promo;
   }
@@ -85,7 +84,7 @@ export class PromotionsController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdatePromotionDto,
-    @CurrentUser() user: { id: string; rol: string; nombre?: string },
+    @CurrentUser() user: { id: string; rol: string },
   ) {
     const promo = await this.promotionsService.update(id, dto);
     await this.auditService.log(
@@ -94,7 +93,6 @@ export class PromotionsController {
       id,
       `Promoción editada: ${promo.nombre}`,
       user.id,
-      user.nombre,
     );
     return promo;
   }
@@ -106,7 +104,7 @@ export class PromotionsController {
   @ApiNotFoundResponse({ description: 'Promoción no encontrada' })
   async remove(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string; rol: string; nombre?: string },
+    @CurrentUser() user: { id: string; rol: string },
   ) {
     const result = await this.promotionsService.remove(id);
     await this.auditService.log(
@@ -115,7 +113,6 @@ export class PromotionsController {
       id,
       `Promoción eliminada: ${id}`,
       user.id,
-      user.nombre,
     );
     return result;
   }
