@@ -86,6 +86,48 @@ export class MetaConversionsService {
     return digits;
   }
 
+  /**
+   * Normaliza ciudad y departamento como exige Meta:
+   * "lowercase only with no punctuation, no special characters, and no spaces".
+   *
+   * El acento es determinante. "Medellín" y "medellin" dan hashes distintos, así
+   * que cuando el cliente escribe con tilde Meta no encuentra a nadie con ese
+   * hash y la ciudad deja de aportar al match quality. En Colombia media base de
+   * clientes escribe con tilde y la otra media sin ella, así que sin esto se
+   * perdía la mitad del dato.
+   *
+   * Esto importa más aquí que en el navegador: en el frontend el hash lo calcula
+   * el propio pixel de Meta, que puede normalizar por su cuenta. Aquí el hash lo
+   * calculamos nosotros, así que lo que mandemos mal se queda mal.
+   *
+   * normalize('NFD') separa cada letra de su tilde ("í" → "i" + ´) y el replace
+   * borra las tildes sueltas. La ñ pasa a n, que es lo que Meta espera.
+   */
+  private normalizarLugar(texto: string): string {
+    return texto
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+  }
+
+  /**
+   * Normaliza nombres y apellidos: "lowercase only with no punctuation".
+   *
+   * OJO — al revés que en la ciudad, aquí los acentos SÍ se conservan. Meta
+   * acepta caracteres especiales en fn y ln siempre que vayan en UTF-8, así que
+   * "José" debe viajar como "josé". Quitarle la tilde rompería el dato en vez
+   * de arreglarlo, y bajaría el match quality en lugar de subirlo.
+   */
+  private normalizarNombre(texto: string): string {
+    return texto
+      .trim()
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   private construirUserData(user: MetaUserData): Record<string, unknown> {
     const data: Record<string, unknown> = {};
 
@@ -96,10 +138,22 @@ export class MetaConversionsService {
       if (tel) data.ph = [this.hash(tel)];
     }
 
-    if (user.firstName) data.fn = [this.hash(user.firstName)];
-    if (user.lastName) data.ln = [this.hash(user.lastName)];
-    if (user.city) data.ct = [this.hash(user.city.replace(/\s/g, ''))];
-    if (user.state) data.st = [this.hash(user.state.replace(/\s/g, ''))];
+    if (user.firstName) {
+      const fn = this.normalizarNombre(user.firstName);
+      if (fn) data.fn = [this.hash(fn)];
+    }
+    if (user.lastName) {
+      const ln = this.normalizarNombre(user.lastName);
+      if (ln) data.ln = [this.hash(ln)];
+    }
+    if (user.city) {
+      const ct = this.normalizarLugar(user.city);
+      if (ct) data.ct = [this.hash(ct)];
+    }
+    if (user.state) {
+      const st = this.normalizarLugar(user.state);
+      if (st) data.st = [this.hash(st)];
+    }
 
     // País siempre Colombia: es un dato gratis que sube el match quality.
     data.country = [this.hash('co')];
