@@ -26,9 +26,13 @@ import { MetaConversionsModule } from './modules/meta-conversions/meta-conversio
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate }),
+    // 'default' se comparte entre todos los endpoints por IP, incluido el panel
+    // admin (protegido aparte por JWT + rol ADMIN): navegar varias secciones del
+    // panel en una sesión activa agotaba el cupo de 100/min y producía 429
+    // intermitentes. 'auth' (login) queda igual de estricto.
     ThrottlerModule.forRoot({
       throttlers: [
-        { name: 'default', ttl: 60000, limit: 100 },
+        { name: 'default', ttl: 60000, limit: 300 },
         { name: 'auth', ttl: 60000, limit: 8 },
       ],
     }),
