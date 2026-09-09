@@ -9,6 +9,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { Response } from 'express';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -17,7 +18,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
     const mapped = this.mapException(exception);
     const ctx = host.switchToHttp();
-    const response = ctx.getResponse();
+    const response = ctx.getResponse<Response>();
     const status = mapped.getStatus();
     response.status(status).json(mapped.getResponse());
   }
@@ -37,23 +38,34 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return exception;
     }
 
-    const stack = exception instanceof Error ? exception.stack : String(exception);
+    const stack =
+      exception instanceof Error ? exception.stack : String(exception);
     this.logger.error('Error no controlado', stack);
     return new InternalServerErrorException('Error interno del servidor.');
   }
 
-  private mapPrismaException(exception: Prisma.PrismaClientKnownRequestError): HttpException {
+  private mapPrismaException(
+    exception: Prisma.PrismaClientKnownRequestError,
+  ): HttpException {
     switch (exception.code) {
       case 'P2002': {
-        const target = Array.isArray(exception.meta?.target)
-          ? (exception.meta.target as string[]).join(', ')
-          : String(exception.meta?.target ?? 'campo único');
-        return new ConflictException(`Ya existe un registro con ese valor en: ${target}.`);
+        const metaTarget = exception.meta?.target;
+        const target = Array.isArray(metaTarget)
+          ? (metaTarget as string[]).join(', ')
+          : typeof metaTarget === 'string'
+            ? metaTarget
+            : 'campo único';
+        return new ConflictException(
+          `Ya existe un registro con ese valor en: ${target}.`,
+        );
       }
       case 'P2025':
         return new NotFoundException('Registro no encontrado.');
       default:
-        this.logger.error(`Prisma error no mapeado: ${exception.code}`, exception.message);
+        this.logger.error(
+          `Prisma error no mapeado: ${exception.code}`,
+          exception.message,
+        );
         return new InternalServerErrorException('Error interno del servidor.');
     }
   }

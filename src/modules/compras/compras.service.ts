@@ -107,13 +107,7 @@ export class ComprasService {
       }
 
       // Productos: crear stub si no existe, o habilitar si estaba deshabilitado
-      await this.syncProducto(
-        tx,
-        dto.marca,
-        dto.modelo,
-        dto.categoria,
-        'create',
-      );
+      await this.syncProducto(tx, dto.marca, dto.modelo, dto.categoria);
 
       return nuevaCompra;
     });
@@ -226,10 +220,10 @@ export class ComprasService {
           data: { nombre: combinedNew, ...(marca ? { marca } : {}) },
         });
         if (renombrados.count === 0) {
-          await this.syncProducto(tx, marca, modelo, categoria, 'update');
+          await this.syncProducto(tx, marca, modelo, categoria);
         }
       } else {
-        await this.syncProducto(tx, marca, modelo, categoria, 'update');
+        await this.syncProducto(tx, marca, modelo, categoria);
       }
 
       return compraActualizada;
@@ -255,7 +249,6 @@ export class ComprasService {
     marca: string | null | undefined,
     modelo: string,
     categoria: string,
-    _op: 'create' | 'update',
   ) {
     const inv = await tx.inventarioMaestro.findUnique({ where: { modelo } });
     if (!inv || inv.stock <= 0) return;

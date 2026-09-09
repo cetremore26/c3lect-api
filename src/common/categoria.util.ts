@@ -20,7 +20,14 @@ export function categoriaDesdeCapitalizada(cat: string): Categoria {
   return CATEGORIAS.find((c) => CATEGORIA_CAPITALIZADA[c] === cat) ?? 'reloj';
 }
 
-const PERFUME_KEYWORDS = ['Lattafa', 'Afnan', 'Sahari', 'Zakat', 'Grandeur', 'Amaran'];
+const PERFUME_KEYWORDS = [
+  'Lattafa',
+  'Afnan',
+  'Sahari',
+  'Zakat',
+  'Grandeur',
+  'Amaran',
+];
 
 // Heurística sobre el texto libre de `modelo` — HistoricalSale no tiene
 // columna de categoría propia, así que no hay valor almacenado del que partir.

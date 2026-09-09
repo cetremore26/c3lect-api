@@ -15,8 +15,12 @@ import { MailModule } from '../mail/mail.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        signOptions: { expiresIn: (config.get<string>('JWT_EXPIRES_IN') ?? '15m') as any },
+        signOptions: {
+          // jsonwebtoken tipa expiresIn como StringValue (literal tipo "15m", "7d", ...) | number,
+          // demasiado estricto para un valor que viene de una env var en runtime.
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          expiresIn: (config.get<string>('JWT_EXPIRES_IN') ?? '15m') as any,
+        },
       }),
     }),
     MailModule,

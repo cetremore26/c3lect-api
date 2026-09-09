@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateGastoDto } from './dto/create-gasto.dto';
@@ -38,8 +39,8 @@ export class GastosService {
   }
 
   async update(id: string, dto: UpdateGastoDto, userId?: string) {
-    const existing = await this.assertExists(id);
-    const data: any = {};
+    await this.assertExists(id);
+    const data: Prisma.ExpenseUpdateInput = {};
     if (dto.fecha) data.fecha = new Date(dto.fecha);
     if (dto.concepto) data.concepto = dto.concepto;
     if (dto.monto !== undefined) data.monto = dto.monto;

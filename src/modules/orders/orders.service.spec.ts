@@ -66,9 +66,13 @@ describe('OrdersService.updateStatus', () => {
     const mail = { sendOrderStatusUpdate: jest.fn() };
     const config = { get: jest.fn() };
     const audit = { log: jest.fn() };
-    const promotions = { getPromocionesVigentes: jest.fn().mockResolvedValue([]) };
+    const promotions = {
+      getPromocionesVigentes: jest.fn().mockResolvedValue([]),
+    };
 
-    const metaConversions = { sendPurchase: jest.fn().mockResolvedValue(undefined) };
+    const metaConversions = {
+      sendPurchase: jest.fn().mockResolvedValue(undefined),
+    };
 
     const service = new OrdersService(
       prisma as any,
@@ -253,7 +257,9 @@ describe('OrdersService.resolveItems', () => {
       product: { findMany: jest.fn().mockResolvedValue(products) },
       inventarioMaestro: { findFirst: jest.fn().mockResolvedValue(inventario) },
     };
-    const promotions = { getPromocionesVigentes: jest.fn().mockResolvedValue([]) };
+    const promotions = {
+      getPromocionesVigentes: jest.fn().mockResolvedValue([]),
+    };
     const service = new OrdersService(
       prisma as any,
       {} as any,

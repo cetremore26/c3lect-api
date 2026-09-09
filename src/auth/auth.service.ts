@@ -27,10 +27,14 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    const existing = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const existing = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (existing) throw new ConflictException('El correo ya está registrado.');
 
-    const passwordHash = await argon2.hash(dto.password, { type: argon2.argon2id });
+    const passwordHash = await argon2.hash(dto.password, {
+      type: argon2.argon2id,
+    });
 
     const user = await this.prisma.user.create({
       data: {
@@ -52,14 +56,21 @@ export class AuthService {
 
     return {
       ...tokens,
-      user: { id: user.id, email: user.email, nombre: user.nombre, rol: user.rol },
+      user: {
+        id: user.id,
+        email: user.email,
+        nombre: user.nombre,
+        rol: user.rol,
+      },
     };
   }
 
   async login(dto: LoginDto) {
     const GENERIC = 'Credenciales incorrectas.';
 
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (!user || !user.passwordHash) throw new UnauthorizedException(GENERIC);
 
     const valid = await argon2.verify(user.passwordHash, dto.password);
@@ -68,7 +79,12 @@ export class AuthService {
     const tokens = await this.generateTokens(user);
     return {
       ...tokens,
-      user: { id: user.id, email: user.email, nombre: user.nombre, rol: user.rol },
+      user: {
+        id: user.id,
+        email: user.email,
+        nombre: user.nombre,
+        rol: user.rol,
+      },
     };
   }
 
@@ -77,7 +93,9 @@ export class AuthService {
     const codeHash = await argon2.hash(code, { type: argon2.argon2id });
     const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    await this.prisma.otpCode.create({ data: { email: dto.email, codeHash, expiresAt } });
+    await this.prisma.otpCode.create({
+      data: { email: dto.email, codeHash, expiresAt },
+    });
     void this.mail.sendOtp(dto.email, code);
 
     return { message: 'Si el correo está registrado, recibirás un código.' };
@@ -96,22 +114,35 @@ export class AuthService {
         break;
       }
     }
-    if (!matchedId) throw new UnauthorizedException('Código inválido o expirado.');
+    if (!matchedId)
+      throw new UnauthorizedException('Código inválido o expirado.');
 
-    await this.prisma.otpCode.update({ where: { id: matchedId }, data: { used: true } });
+    await this.prisma.otpCode.update({
+      where: { id: matchedId },
+      data: { used: true },
+    });
 
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
     if (!user) return { requiresRegistration: true };
 
     const tokens = await this.generateTokens(user);
     return {
       ...tokens,
-      user: { id: user.id, email: user.email, nombre: user.nombre, rol: user.rol },
+      user: {
+        id: user.id,
+        email: user.email,
+        nombre: user.nombre,
+        rol: user.rol,
+      },
     };
   }
 
   async requestPasswordReset(dto: RequestPasswordResetDto) {
-    const user = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: dto.email },
+    });
 
     if (user) {
       const rawToken = randomBytes(32).toString('hex');
@@ -145,7 +176,9 @@ export class AuthService {
     }
     if (!matched) throw new UnauthorizedException('Token inválido o expirado.');
 
-    const passwordHash = await argon2.hash(dto.newPassword, { type: argon2.argon2id });
+    const passwordHash = await argon2.hash(dto.newPassword, {
+      type: argon2.argon2id,
+    });
 
     await this.prisma.$transaction([
       this.prisma.user.update({
@@ -156,20 +189,25 @@ export class AuthService {
         where: { id: matched.id },
         data: { used: true },
       }),
-      this.prisma.refreshToken.deleteMany({ where: { userId: matched.userId } }),
+      this.prisma.refreshToken.deleteMany({
+        where: { userId: matched.userId },
+      }),
     ]);
 
     return { message: 'Contraseña actualizada correctamente.' };
   }
 
   async refreshTokens(dto: RefreshTokenDto) {
-    const tokenHash = createHash('sha256').update(dto.refreshToken).digest('hex');
+    const tokenHash = createHash('sha256')
+      .update(dto.refreshToken)
+      .digest('hex');
 
     const record = await this.prisma.refreshToken.findFirst({
       where: { tokenHash, expiresAt: { gt: new Date() } },
       include: { user: true },
     });
-    if (!record) throw new UnauthorizedException('Refresh token inválido o expirado.');
+    if (!record)
+      throw new UnauthorizedException('Refresh token inválido o expirado.');
 
     await this.prisma.refreshToken.delete({ where: { id: record.id } });
 
@@ -179,7 +217,12 @@ export class AuthService {
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new UnauthorizedException('Usuario no encontrado.');
-    return { id: user.id, email: user.email, nombre: user.nombre, rol: user.rol };
+    return {
+      id: user.id,
+      email: user.email,
+      nombre: user.nombre,
+      rol: user.rol,
+    };
   }
 
   async logout(userId: string) {
@@ -187,10 +230,16 @@ export class AuthService {
     return { message: 'Sesión cerrada.' };
   }
 
-  private async generateTokens(user: { id: string; email: string; rol: string }) {
-    const accessToken = this.jwtService.sign(
-      { sub: user.id, email: user.email, rol: user.rol },
-    );
+  private async generateTokens(user: {
+    id: string;
+    email: string;
+    rol: string;
+  }) {
+    const accessToken = this.jwtService.sign({
+      sub: user.id,
+      email: user.email,
+      rol: user.rol,
+    });
 
     const rawToken = randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');
@@ -210,11 +259,20 @@ export class AuthService {
     const unit = expiry.slice(-1);
     const value = parseInt(expiry.slice(0, -1), 10);
     switch (unit) {
-      case 'd': now.setDate(now.getDate() + value); break;
-      case 'h': now.setHours(now.getHours() + value); break;
-      case 'm': now.setMinutes(now.getMinutes() + value); break;
-      case 's': now.setSeconds(now.getSeconds() + value); break;
-      default:  now.setDate(now.getDate() + 7);
+      case 'd':
+        now.setDate(now.getDate() + value);
+        break;
+      case 'h':
+        now.setHours(now.getHours() + value);
+        break;
+      case 'm':
+        now.setMinutes(now.getMinutes() + value);
+        break;
+      case 's':
+        now.setSeconds(now.getSeconds() + value);
+        break;
+      default:
+        now.setDate(now.getDate() + 7);
     }
     return now;
   }

@@ -36,7 +36,9 @@ export class AuthController {
 
   @Post('register')
   @ApiOperation({ summary: 'Registro con email y contraseña' })
-  @ApiCreatedResponse({ description: 'Usuario creado — retorna accessToken y refreshToken' })
+  @ApiCreatedResponse({
+    description: 'Usuario creado — retorna accessToken y refreshToken',
+  })
   @ApiConflictResponse({ description: 'El correo ya está registrado' })
   register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
@@ -56,7 +58,9 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Solicitar código OTP por correo' })
-  @ApiOkResponse({ description: 'Respuesta siempre igual para no revelar si el correo existe' })
+  @ApiOkResponse({
+    description: 'Respuesta siempre igual para no revelar si el correo existe',
+  })
   requestOtp(@Body() dto: RequestOtpDto) {
     return this.authService.requestOtp(dto);
   }
@@ -65,7 +69,10 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Verificar código OTP' })
-  @ApiOkResponse({ description: 'Retorna tokens si el usuario existe, o requiresRegistration: true si no' })
+  @ApiOkResponse({
+    description:
+      'Retorna tokens si el usuario existe, o requiresRegistration: true si no',
+  })
   @ApiUnauthorizedResponse({ description: 'Código inválido o expirado' })
   verifyOtp(@Body() dto: VerifyOtpDto) {
     return this.authService.verifyOtp(dto);
@@ -75,7 +82,9 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Solicitar enlace de recuperación de contraseña' })
-  @ApiOkResponse({ description: 'Respuesta siempre igual para no revelar si el correo existe' })
+  @ApiOkResponse({
+    description: 'Respuesta siempre igual para no revelar si el correo existe',
+  })
   requestPasswordReset(@Body() dto: RequestPasswordResetDto) {
     return this.authService.requestPasswordReset(dto);
   }
@@ -84,7 +93,9 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Cambiar contraseña con token de recuperación' })
-  @ApiOkResponse({ description: 'Contraseña actualizada — invalida todas las sesiones activas' })
+  @ApiOkResponse({
+    description: 'Contraseña actualizada — invalida todas las sesiones activas',
+  })
   @ApiUnauthorizedResponse({ description: 'Token inválido o expirado' })
   resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
@@ -114,7 +125,9 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Cerrar sesión — invalida todos los refresh tokens del usuario' })
+  @ApiOperation({
+    summary: 'Cerrar sesión — invalida todos los refresh tokens del usuario',
+  })
   @ApiOkResponse({ description: 'Sesión cerrada' })
   logout(@CurrentUser() user: { id: string }) {
     return this.authService.logout(user.id);

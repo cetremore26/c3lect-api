@@ -35,7 +35,12 @@ export interface MetaUserData {
 }
 
 export interface MetaEventInput {
-  eventName: 'Purchase' | 'Lead' | 'Contact' | 'CompleteRegistration' | 'InitiateCheckout';
+  eventName:
+    | 'Purchase'
+    | 'Lead'
+    | 'Contact'
+    | 'CompleteRegistration'
+    | 'InitiateCheckout';
   /**
    * Clave de deduplicación. Para compras DEBE ser el orderNumber, porque es
    * el mismo valor que usa trackPurchase() en el navegador y el mismo que
@@ -66,7 +71,9 @@ export class MetaConversionsService {
 
   /** SHA-256 en minúsculas y sin espacios, que es lo que exige Meta. */
   private hash(value: string): string {
-    return createHash('sha256').update(value.trim().toLowerCase()).digest('hex');
+    return createHash('sha256')
+      .update(value.trim().toLowerCase())
+      .digest('hex');
   }
 
   /**
@@ -219,16 +226,24 @@ export class MetaConversionsService {
 
       if (!res.ok) {
         const text = await res.text();
-        this.logger.error(`Meta CAPI respondió ${res.status} para ${input.eventName}: ${text}`);
+        this.logger.error(
+          `Meta CAPI respondió ${res.status} para ${input.eventName}: ${text}`,
+        );
         return;
       }
 
-      const json = (await res.json()) as { events_received?: number; fbtrace_id?: string };
+      const json = (await res.json()) as {
+        events_received?: number;
+        fbtrace_id?: string;
+      };
       this.logger.log(
         `Meta CAPI ${input.eventName} enviado (event_id=${input.eventId}, recibidos=${json.events_received ?? '?'})`,
       );
     } catch (err) {
-      this.logger.error(`Error enviando evento ${input.eventName} a Meta CAPI`, err as Error);
+      this.logger.error(
+        `Error enviando evento ${input.eventName} a Meta CAPI`,
+        err as Error,
+      );
     }
   }
 

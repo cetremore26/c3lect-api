@@ -1,9 +1,5 @@
 import { ProductsService } from './products.service';
-import {
-  ProductSortBy,
-  RangoPrecio,
-  SortOrder,
-} from './dto/query-product.dto';
+import { ProductSortBy, RangoPrecio, SortOrder } from './dto/query-product.dto';
 
 describe('ProductsService.findAll', () => {
   let repo: { findAll: jest.Mock; findAllPaginated: jest.Mock };
@@ -22,7 +18,7 @@ describe('ProductsService.findAll', () => {
 
   describe('filtros', () => {
     it('no aplica ningun filtro cuando la query viene vacia', async () => {
-      await service.findAll({} as any);
+      await service.findAll({});
       expect(whereDeLaLlamada()).toEqual({});
     });
 
@@ -31,7 +27,7 @@ describe('ProductsService.findAll', () => {
         categoria: 'reloj',
         marca: 'Fossil',
         genero: 'Hombre',
-      } as any);
+      });
 
       expect(whereDeLaLlamada()).toEqual({
         cat: { equals: 'reloj', mode: 'insensitive' },
@@ -41,17 +37,17 @@ describe('ProductsService.findAll', () => {
     });
 
     it('respeta soloDisponibles en false, sin confundirlo con ausente', async () => {
-      await service.findAll({ soloDisponibles: false } as any);
+      await service.findAll({ soloDisponibles: false });
       expect(whereDeLaLlamada().disponible).toBe(false);
     });
 
     it('omite el filtro de disponibilidad cuando no se envia', async () => {
-      await service.findAll({} as any);
+      await service.findAll({});
       expect(whereDeLaLlamada()).not.toHaveProperty('disponible');
     });
 
     it('busca productos incompletos por precio, estilo o imagenes vacias', async () => {
-      await service.findAll({ incompletos: true } as any);
+      await service.findAll({ incompletos: true });
       expect(whereDeLaLlamada().OR).toEqual([
         { precio: 0 },
         { estilo: '' },
@@ -66,14 +62,14 @@ describe('ProductsService.findAll', () => {
       [RangoPrecio.MEDIO, { gte: 150, lte: 300 }],
       [RangoPrecio.ALTO, { gte: 300 }],
     ])('traduce el rango %s', async (rango, esperado) => {
-      await service.findAll({ rangoPrecio: rango } as any);
+      await service.findAll({ rangoPrecio: rango });
       expect(whereDeLaLlamada().precio).toEqual(esperado);
     });
   });
 
   describe('ordenamiento', () => {
     it('ordena por disponibles primero y luego alfabeticamente por defecto', async () => {
-      await service.findAll({} as any);
+      await service.findAll({});
       expect(orderByDeLaLlamada()).toEqual([
         { disponible: 'desc' },
         { nombre: 'asc' },
@@ -81,7 +77,7 @@ describe('ProductsService.findAll', () => {
     });
 
     it('ordena por precio ascendente cuando no se indica direccion', async () => {
-      await service.findAll({ sortBy: ProductSortBy.PRECIO } as any);
+      await service.findAll({ sortBy: ProductSortBy.PRECIO });
       expect(orderByDeLaLlamada()).toEqual([{ precio: SortOrder.ASC }]);
     });
 
@@ -89,20 +85,20 @@ describe('ProductsService.findAll', () => {
       await service.findAll({
         sortBy: ProductSortBy.PRECIO,
         sortOrder: SortOrder.DESC,
-      } as any);
+      });
       expect(orderByDeLaLlamada()).toEqual([{ precio: 'desc' }]);
     });
   });
 
   describe('paginacion', () => {
     it('devuelve la lista plana cuando no se pide paginacion', async () => {
-      await service.findAll({} as any);
+      await service.findAll({});
       expect(repo.findAll).toHaveBeenCalled();
       expect(repo.findAllPaginated).not.toHaveBeenCalled();
     });
 
     it('pagina en cuanto se envia solo limit', async () => {
-      await service.findAll({ limit: 10 } as any);
+      await service.findAll({ limit: 10 });
       expect(repo.findAllPaginated).toHaveBeenCalledWith(
         {},
         0,
@@ -112,7 +108,7 @@ describe('ProductsService.findAll', () => {
     });
 
     it('calcula el skip a partir de pagina y limite', async () => {
-      await service.findAll({ page: 3, limit: 20 } as any);
+      await service.findAll({ page: 3, limit: 20 });
       expect(repo.findAllPaginated).toHaveBeenCalledWith(
         {},
         40,
@@ -122,7 +118,7 @@ describe('ProductsService.findAll', () => {
     });
 
     it('usa pagina 1 y limite 20 por defecto al paginar', async () => {
-      await service.findAll({ page: 1 } as any);
+      await service.findAll({ page: 1 });
       expect(repo.findAllPaginated).toHaveBeenCalledWith(
         {},
         0,
@@ -133,13 +129,13 @@ describe('ProductsService.findAll', () => {
 
     it('redondea totalPages hacia arriba', async () => {
       repo.findAllPaginated.mockResolvedValue({ data: [], total: 41 });
-      const res: any = await service.findAll({ page: 1, limit: 20 } as any);
+      const res: any = await service.findAll({ page: 1, limit: 20 });
       expect(res.meta.totalPages).toBe(3);
     });
 
     it('devuelve totalPages en 0 cuando no hay resultados', async () => {
       repo.findAllPaginated.mockResolvedValue({ data: [], total: 0 });
-      const res: any = await service.findAll({ page: 1, limit: 20 } as any);
+      const res: any = await service.findAll({ page: 1, limit: 20 });
       expect(res.meta.totalPages).toBe(0);
     });
   });
