@@ -2,7 +2,10 @@ import { Prisma, PrismaClient } from '@prisma/client';
 
 type PrismaLike = PrismaClient | Prisma.TransactionClient;
 
-export function combineMarcaModelo(marca: string | null | undefined, modelo: string): string {
+export function combineMarcaModelo(
+  marca: string | null | undefined,
+  modelo: string,
+): string {
   return `${marca ?? ''} ${modelo}`.trim().replace(/\s+/g, ' ');
 }
 

@@ -1,6 +1,15 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { EstadoPedido } from '@prisma/client';
 
 export class QueryOrdersDto {
@@ -19,7 +28,9 @@ export class QueryOrdersDto {
   @IsDateString()
   fechaHasta?: string;
 
-  @ApiPropertyOptional({ description: 'Buscar por número de pedido, email o nombre' })
+  @ApiPropertyOptional({
+    description: 'Buscar por número de pedido, email o nombre',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(100)

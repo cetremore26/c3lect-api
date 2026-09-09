@@ -42,7 +42,10 @@ export class OrdersController {
     description:
       'Público — funciona para invitados (sin JWT) y usuarios autenticados (con JWT). Si hay JWT, el pedido se vincula a la cuenta.',
   })
-  @ApiCreatedResponse({ description: 'Pedido creado — retorna pedido completo con items y shipping info' })
+  @ApiCreatedResponse({
+    description:
+      'Pedido creado — retorna pedido completo con items y shipping info',
+  })
   createOrder(
     @Body() dto: CreateOrderDto,
     @CurrentUser() user?: { id: string; rol: string },
@@ -55,7 +58,8 @@ export class OrdersController {
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Listar pedidos',
-    description: 'Admin ve todos los pedidos con filtros. Cliente ve solo los suyos.',
+    description:
+      'Admin ve todos los pedidos con filtros. Cliente ve solo los suyos.',
   })
   @ApiOkResponse({ description: 'Lista paginada de pedidos' })
   findAll(
@@ -68,10 +72,18 @@ export class OrdersController {
   @Get(':id')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Detalle de un pedido — admin ve cualquiera, cliente solo los suyos' })
-  @ApiOkResponse({ description: 'Pedido completo con items, shipping info e historial de estados' })
+  @ApiOperation({
+    summary:
+      'Detalle de un pedido — admin ve cualquiera, cliente solo los suyos',
+  })
+  @ApiOkResponse({
+    description:
+      'Pedido completo con items, shipping info e historial de estados',
+  })
   @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
-  @ApiForbiddenResponse({ description: 'No tienes permiso para ver este pedido' })
+  @ApiForbiddenResponse({
+    description: 'No tienes permiso para ver este pedido',
+  })
   findOne(
     @Param('id') id: string,
     @CurrentUser() user: { id: string; rol: string },
@@ -84,7 +96,10 @@ export class OrdersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Cambiar estado del pedido (admin) — notifica al cliente por correo' })
+  @ApiOperation({
+    summary:
+      'Cambiar estado del pedido (admin) — notifica al cliente por correo',
+  })
   @ApiOkResponse({ description: 'Estado actualizado y notificación enviada' })
   @ApiNotFoundResponse({ description: 'Pedido no encontrado' })
   @ApiForbiddenResponse({ description: 'Se requiere rol ADMIN' })

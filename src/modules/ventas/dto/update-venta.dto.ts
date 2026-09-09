@@ -1,5 +1,12 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class UpdateVentaDto {
   @ApiPropertyOptional()
@@ -67,7 +74,9 @@ export class UpdateVentaDto {
   @MaxLength(50)
   fuente?: string;
 
-  @ApiPropertyOptional({ enum: ['Pagado', 'Abonado', 'Pendiente', 'Uso Personal'] })
+  @ApiPropertyOptional({
+    enum: ['Pagado', 'Abonado', 'Pendiente', 'Uso Personal'],
+  })
   @IsOptional()
   @IsString()
   @MaxLength(50)

@@ -18,7 +18,8 @@ export class MailService {
 
   constructor(private readonly config: ConfigService) {
     this.resend = new Resend(config.get<string>('RESEND_API_KEY'));
-    this.from = config.get<string>('RESEND_FROM') ?? 'C3LECT <onboarding@resend.dev>';
+    this.from =
+      config.get<string>('RESEND_FROM') ?? 'C3LECT <onboarding@resend.dev>';
   }
 
   // ─── Auth ──────────────────────────────────────────────────────────────────
@@ -131,11 +132,11 @@ export class MailService {
     nuevoStatus: string,
   ): Promise<void> {
     const statusLabels: Record<string, string> = {
-      PENDIENTE:  'Pendiente de confirmación',
+      PENDIENTE: 'Pendiente de confirmación',
       CONFIRMADO: 'Pago confirmado — preparando envío',
-      EN_CAMINO:  'En camino a tu dirección',
-      ENTREGADO:  'Entregado',
-      CANCELADO:  'Cancelado',
+      EN_CAMINO: 'En camino a tu dirección',
+      ENTREGADO: 'Entregado',
+      CANCELADO: 'Cancelado',
     };
     const label = statusLabels[nuevoStatus] ?? nuevoStatus;
 
@@ -243,11 +244,11 @@ export class MailService {
     clienteNombre: string,
   ): Promise<void> {
     const statusLabels: Record<string, string> = {
-      PENDIENTE:  'Pendiente de confirmación',
+      PENDIENTE: 'Pendiente de confirmación',
       CONFIRMADO: 'Confirmado',
-      EN_CAMINO:  'En camino',
-      ENTREGADO:  'Entregado',
-      CANCELADO:  'Cancelado',
+      EN_CAMINO: 'En camino',
+      ENTREGADO: 'Entregado',
+      CANCELADO: 'Cancelado',
     };
     const label = statusLabels[nuevoStatus] ?? nuevoStatus;
 
@@ -268,7 +269,11 @@ export class MailService {
     if (error) this.logger.error('sendOrderStatusUpdateAdmin error', error);
   }
 
-  async sendStockAlert(adminEmail: string, orderNumber: string, detalle: string): Promise<void> {
+  async sendStockAlert(
+    adminEmail: string,
+    orderNumber: string,
+    detalle: string,
+  ): Promise<void> {
     const { error } = await this.resend.emails.send({
       from: this.from,
       to: adminEmail,

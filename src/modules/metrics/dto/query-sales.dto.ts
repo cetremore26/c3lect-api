@@ -1,6 +1,14 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import {
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 import { CATEGORIAS } from '../../../common/categoria.util';
 
@@ -28,7 +36,9 @@ export class QuerySalesDto extends PaginationQueryDto {
   @MaxLength(30)
   hasta?: string;
 
-  @ApiPropertyOptional({ description: 'Uno o varios estados separados por coma' })
+  @ApiPropertyOptional({
+    description: 'Uno o varios estados separados por coma',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(100)

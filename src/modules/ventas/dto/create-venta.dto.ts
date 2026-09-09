@@ -1,5 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsDateString, IsInt, IsOptional, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export class CreateVentaDto {
   @ApiProperty({ example: '2026-06-15' })
@@ -53,7 +60,9 @@ export class CreateVentaDto {
   @Min(0)
   abono: number;
 
-  @ApiPropertyOptional({ enum: ['WhatsApp', 'Presencial', 'Referido', 'Instagram'] })
+  @ApiPropertyOptional({
+    enum: ['WhatsApp', 'Presencial', 'Referido', 'Instagram'],
+  })
   @IsOptional()
   @IsString()
   @MaxLength(50)

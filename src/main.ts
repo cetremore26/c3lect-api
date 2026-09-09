@@ -50,7 +50,9 @@ async function bootstrap() {
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('C3LECT API')
-    .setDescription('Backend para la plataforma de comercio electrónico premium C3LECT — Relojería y Perfumería')
+    .setDescription(
+      'Backend para la plataforma de comercio electrónico premium C3LECT — Relojería y Perfumería',
+    )
     .setVersion('1.0')
     .addBearerAuth()
     .build();
@@ -66,4 +68,4 @@ async function bootstrap() {
   await app.listen(port);
 }
 
-bootstrap();
+void bootstrap();

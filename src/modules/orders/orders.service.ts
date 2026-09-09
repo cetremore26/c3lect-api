@@ -11,7 +11,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
 import { AuditService } from '../audit/audit.service';
 import { PromotionsService } from '../promotions/promotions.service';
-import { mejorDescuento, calcularPrecioFinal } from '../promotions/promotions.util';
+import {
+  mejorDescuento,
+  calcularPrecioFinal,
+} from '../promotions/promotions.util';
 import { calcGananciaPorVenta } from '../metrics/metrics.service';
 import { CreateOrderDto } from './dto/create-order.dto';
 import { UpdateOrderStatusDto } from './dto/update-order-status.dto';
@@ -20,11 +23,11 @@ import { deriveMarcaModeloFromProduct } from '../../common/marca-modelo.util';
 import { MetaConversionsService } from '../meta-conversions/meta-conversions.service';
 
 const VALID_TRANSITIONS: Record<EstadoPedido, EstadoPedido[]> = {
-  PENDIENTE:  [EstadoPedido.CONFIRMADO, EstadoPedido.CANCELADO],
-  CONFIRMADO: [EstadoPedido.EN_CAMINO,  EstadoPedido.CANCELADO],
-  EN_CAMINO:  [EstadoPedido.ENTREGADO,  EstadoPedido.CANCELADO],
-  ENTREGADO:  [],
-  CANCELADO:  [],
+  PENDIENTE: [EstadoPedido.CONFIRMADO, EstadoPedido.CANCELADO],
+  CONFIRMADO: [EstadoPedido.EN_CAMINO, EstadoPedido.CANCELADO],
+  EN_CAMINO: [EstadoPedido.ENTREGADO, EstadoPedido.CANCELADO],
+  ENTREGADO: [],
+  CANCELADO: [],
 };
 
 const ALPHA = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
@@ -94,8 +97,15 @@ export class OrdersService {
     const productMap = new Map(products.map((p) => [p.id, p]));
     const itemsData = items.map((item) => {
       const product = productMap.get(item.productId)!;
-      const descuentoPorcentaje = mejorDescuento(promocionesVigentes, product, autenticado);
-      const precioUnitario = calcularPrecioFinal(product.precio, descuentoPorcentaje);
+      const descuentoPorcentaje = mejorDescuento(
+        promocionesVigentes,
+        product,
+        autenticado,
+      );
+      const precioUnitario = calcularPrecioFinal(
+        product.precio,
+        descuentoPorcentaje,
+      );
       return {
         productId: item.productId,
         nombre: product.nombre,
@@ -108,7 +118,11 @@ export class OrdersService {
     for (const item of itemsData) {
       const product = productMap.get(item.productId)!;
       const { modelo } = deriveMarcaModeloFromProduct(product);
-      const inv = await this.findInventarioByModelo(this.prisma, modelo, product.nombre);
+      const inv = await this.findInventarioByModelo(
+        this.prisma,
+        modelo,
+        product.nombre,
+      );
       if (inv && inv.stock < item.cantidad) {
         throw new BadRequestException(
           `Stock insuficiente para "${item.nombre}" (disponible: ${inv.stock}, solicitado: ${item.cantidad}).`,
@@ -135,14 +149,19 @@ export class OrdersService {
     if (inv) return inv;
     if (modelo !== nombreCompletoLegado) {
       return tx.inventarioMaestro.findFirst({
-        where: { modelo: { equals: nombreCompletoLegado, mode: 'insensitive' } },
+        where: {
+          modelo: { equals: nombreCompletoLegado, mode: 'insensitive' },
+        },
       });
     }
     return null;
   }
 
   async createOrder(dto: CreateOrderDto, userId?: string) {
-    const { itemsData, subtotal, total } = await this.resolveItems(dto.items, !!userId);
+    const { itemsData, subtotal, total } = await this.resolveItems(
+      dto.items,
+      !!userId,
+    );
     const orderNumber = buildOrderNumber();
 
     const order = await this.prisma.$transaction(async (tx) => {
@@ -184,7 +203,13 @@ export class OrdersService {
 
     const adminEmail = this.config.get<string>('ADMIN_EMAIL');
     if (adminEmail) {
-      void this.mail.sendNewOrderAdmin(adminEmail, order.orderNumber, nombreCliente, order.total, order.items);
+      void this.mail.sendNewOrderAdmin(
+        adminEmail,
+        order.orderNumber,
+        nombreCliente,
+        order.total,
+        order.items,
+      );
     }
 
     // Purchase por Conversions API para los pedidos que NO pasan por
@@ -211,7 +236,14 @@ export class OrdersService {
   }
 
   async findAll(query: QueryOrdersDto, userId?: string, rol?: string) {
-    const { status, fechaDesde, fechaHasta, search, page = 1, limit = 20 } = query;
+    const {
+      status,
+      fechaDesde,
+      fechaHasta,
+      search,
+      page = 1,
+      limit = 20,
+    } = query;
     const skip = (page - 1) * limit;
 
     const where: Record<string, unknown> = {};
@@ -234,7 +266,11 @@ export class OrdersService {
       where.OR = [
         { orderNumber: { contains: search, mode: 'insensitive' } },
         { shippingInfo: { email: { contains: search, mode: 'insensitive' } } },
-        { shippingInfo: { nombreCompleto: { contains: search, mode: 'insensitive' } } },
+        {
+          shippingInfo: {
+            nombreCompleto: { contains: search, mode: 'insensitive' },
+          },
+        },
       ];
     }
 
@@ -301,9 +337,12 @@ export class OrdersService {
     // y solo se revierten si se cancela un pedido que ya los había generado
     // (es decir, que pasó por CONFIRMADO). Cancelar desde PENDIENTE nunca tocó
     // ni stock ni ventas.
-    const seConfirma = order.status === EstadoPedido.PENDIENTE && dto.status === EstadoPedido.CONFIRMADO;
+    const seConfirma =
+      order.status === EstadoPedido.PENDIENTE &&
+      dto.status === EstadoPedido.CONFIRMADO;
     const seCancelaConStockDescontado =
-      dto.status === EstadoPedido.CANCELADO && order.status !== EstadoPedido.PENDIENTE;
+      dto.status === EstadoPedido.CANCELADO &&
+      order.status !== EstadoPedido.PENDIENTE;
 
     await this.prisma.$transaction(async (tx) => {
       await tx.order.update({
@@ -333,9 +372,15 @@ export class OrdersService {
     });
 
     const email = order.shippingInfo?.email;
-    const nombre = order.shippingInfo?.nombreCompleto ?? order.user?.nombre ?? 'Cliente';
+    const nombre =
+      order.shippingInfo?.nombreCompleto ?? order.user?.nombre ?? 'Cliente';
     if (email && !skipStatusEmail) {
-      void this.mail.sendOrderStatusUpdate(email, nombre, order.orderNumber, dto.status);
+      void this.mail.sendOrderStatusUpdate(
+        email,
+        nombre,
+        order.orderNumber,
+        dto.status,
+      );
     }
 
     // skipStatusEmail=true solo lo usa el flujo de MercadoPago para la transición
@@ -343,11 +388,18 @@ export class OrdersService {
     // pago (sendPaymentConfirmation), así que notificarlo aquí sería duplicado.
     const adminEmail = this.config.get<string>('ADMIN_EMAIL');
     if (adminEmail && !skipStatusEmail) {
-      void this.mail.sendOrderStatusUpdateAdmin(adminEmail, order.orderNumber, dto.status, nombre);
+      void this.mail.sendOrderStatusUpdateAdmin(
+        adminEmail,
+        order.orderNumber,
+        dto.status,
+        nombre,
+      );
     }
 
     await this.audit.log(
-      'ESTADO', 'pedido', id,
+      'ESTADO',
+      'pedido',
+      id,
       `Pedido ${order.orderNumber}: ${order.status} → ${dto.status}`,
       adminId,
     );
@@ -377,7 +429,16 @@ export class OrdersService {
     fbp?: string | null;
     fbc?: string | null;
   }) {
-    const { orderNumber, itemsData, subtotal, total, shippingInfo, userId, fbp, fbc } = params;
+    const {
+      orderNumber,
+      itemsData,
+      subtotal,
+      total,
+      shippingInfo,
+      userId,
+      fbp,
+      fbc,
+    } = params;
 
     const order = await this.prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
@@ -419,7 +480,9 @@ export class OrdersService {
     });
 
     await this.audit.log(
-      'ESTADO', 'pedido', order.id,
+      'ESTADO',
+      'pedido',
+      order.id,
       `Pedido ${order.orderNumber}: creado y confirmado vía MercadoPago`,
       'MERCADOPAGO',
     );
@@ -433,7 +496,12 @@ export class OrdersService {
   private async aplicarConfirmacion(
     tx: Prisma.TransactionClient,
     orderId: string,
-    items: { productId: string; nombre: string; cantidad: number; precioUnitario: number }[],
+    items: {
+      productId: string;
+      nombre: string;
+      cantidad: number;
+      precioUnitario: number;
+    }[],
     cliente: string,
     celular: string | null | undefined,
   ): Promise<void> {
@@ -466,14 +534,20 @@ export class OrdersService {
         );
       }
 
-      const invActualizado = await tx.inventarioMaestro.findUniqueOrThrow({ where: { id: inv.id } });
+      const invActualizado = await tx.inventarioMaestro.findUniqueOrThrow({
+        where: { id: inv.id },
+      });
       await tx.product.updateMany({
         where: { nombre: { equals: item.nombre, mode: 'insensitive' } },
         data: { disponible: invActualizado.stock > 0 },
       });
 
       const gananciaNeta = calcGananciaPorVenta(
-        'Pagado', item.precioUnitario, inv.costoUnitario, 0, item.precioUnitario,
+        'Pagado',
+        item.precioUnitario,
+        inv.costoUnitario,
+        0,
+        item.precioUnitario,
       );
       await tx.historicalSale.createMany({
         data: Array.from({ length: item.cantidad }, () => ({
@@ -510,7 +584,9 @@ export class OrdersService {
 
     for (const item of items) {
       const product = productMap.get(item.productId);
-      const modelo = product ? deriveMarcaModeloFromProduct(product).modelo : item.nombre;
+      const modelo = product
+        ? deriveMarcaModeloFromProduct(product).modelo
+        : item.nombre;
 
       const inv = await this.findInventarioByModelo(tx, modelo, item.nombre);
       if (!inv) continue;

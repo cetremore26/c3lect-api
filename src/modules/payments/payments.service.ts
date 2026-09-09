@@ -5,9 +5,13 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { EstadoPago, EstadoPedido, Payment } from '@prisma/client';
+import { EstadoPago, EstadoPedido, Payment, Prisma } from '@prisma/client';
 import { createHmac } from 'crypto';
-import { MercadoPagoConfig, Preference, Payment as MpPayment } from 'mercadopago';
+import {
+  MercadoPagoConfig,
+  Preference,
+  Payment as MpPayment,
+} from 'mercadopago';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../../mail/mail.service';
@@ -18,10 +22,24 @@ import { WebhookPaymentDto } from './dto/webhook-payment.dto';
 import { MetaConversionsService } from '../meta-conversions/meta-conversions.service';
 
 interface DraftPayload {
-  itemsData: { productId: string; nombre: string; precioUnitario: number; cantidad: number; subtotal: number }[];
+  itemsData: {
+    productId: string;
+    nombre: string;
+    precioUnitario: number;
+    cantidad: number;
+    subtotal: number;
+  }[];
   subtotal: number;
   total: number;
-  shippingInfo: { nombreCompleto: string; email: string; telefono: string; ciudad: string; departamento: string; direccion: string; notas?: string };
+  shippingInfo: {
+    nombreCompleto: string;
+    email: string;
+    telefono: string;
+    ciudad: string;
+    departamento: string;
+    direccion: string;
+    notas?: string;
+  };
   userId: string | null;
   // Cookies de Meta Pixel congeladas junto al resto del borrador: cuando
   // llegue el webhook, el navegador del cliente ya no estará disponible.
@@ -39,11 +57,11 @@ function formatCOP(amount: number): string {
 }
 
 const MP_STATUS_MAP: Record<string, EstadoPago> = {
-  approved:   EstadoPago.APROBADO,
-  rejected:   EstadoPago.RECHAZADO,
-  pending:    EstadoPago.PENDIENTE,
+  approved: EstadoPago.APROBADO,
+  rejected: EstadoPago.RECHAZADO,
+  pending: EstadoPago.PENDIENTE,
   in_process: EstadoPago.PENDIENTE,
-  cancelled:  EstadoPago.CANCELADO,
+  cancelled: EstadoPago.CANCELADO,
 };
 
 @Injectable()
@@ -102,7 +120,8 @@ export class PaymentsService {
       },
     });
 
-    const checkoutUrl = prefResult.init_point ?? prefResult.sandbox_init_point ?? '';
+    const checkoutUrl =
+      prefResult.init_point ?? prefResult.sandbox_init_point ?? '';
 
     const payment = await this.prisma.payment.create({
       data: {
@@ -128,8 +147,12 @@ export class PaymentsService {
   // (ver handleApproved). Así un pago abandonado/rechazado/fallido en MercadoPago
   // nunca deja un pedido huérfano en PENDIENTE.
 
-  async createPendingOrderPayment(dto: CreatePendingPaymentDto, userId?: string) {
-    const { itemsData, subtotal, total } = await this.ordersService.resolveItems(dto.items, !!userId);
+  async createPendingOrderPayment(
+    dto: CreatePendingPaymentDto,
+    userId?: string,
+  ) {
+    const { itemsData, subtotal, total } =
+      await this.ordersService.resolveItems(dto.items, !!userId);
     const orderNumber = buildOrderNumber();
 
     const accessToken = this.config.getOrThrow<string>('MP_ACCESS_TOKEN');
@@ -162,7 +185,8 @@ export class PaymentsService {
       },
     });
 
-    const checkoutUrl = prefResult.init_point ?? prefResult.sandbox_init_point ?? '';
+    const checkoutUrl =
+      prefResult.init_point ?? prefResult.sandbox_init_point ?? '';
 
     const draftPayload: DraftPayload = {
       itemsData,
@@ -183,7 +207,7 @@ export class PaymentsService {
         preferenceId: prefResult.id ?? null,
         checkoutUrl,
         total,
-        draftPayload: draftPayload as unknown as object,
+        draftPayload: draftPayload as unknown as Prisma.InputJsonValue,
       },
     });
 
@@ -204,17 +228,26 @@ export class PaymentsService {
     if (dto.type !== 'payment') return;
 
     if (!xSignature || !xRequestId) {
-      this.logger.warn(`Webhook para payment ${dto.data.id} rechazado: faltan los headers de firma`);
+      this.logger.warn(
+        `Webhook para payment ${dto.data.id} rechazado: faltan los headers de firma`,
+      );
       return;
     }
 
     let signatureValid: boolean;
     try {
-      signatureValid = this.verifySignature(dto.data.id, xSignature, xRequestId);
+      signatureValid = this.verifySignature(
+        dto.data.id,
+        xSignature,
+        xRequestId,
+      );
     } catch (err) {
       // getOrThrow('MP_WEBHOOK_SECRET') falla aquí si el secreto no está configurado —
       // se registra fuerte y se rechaza el webhook en vez de procesarlo sin verificar.
-      this.logger.error('No se pudo verificar la firma del webhook (¿falta MP_WEBHOOK_SECRET?)', err);
+      this.logger.error(
+        'No se pudo verificar la firma del webhook (¿falta MP_WEBHOOK_SECRET?)',
+        err,
+      );
       return;
     }
     if (!signatureValid) {
@@ -229,10 +262,13 @@ export class PaymentsService {
 
       const mpPayment = await mpPaymentClient.get({ id: dto.data.id });
       const orderNumber = mpPayment.external_reference;
-      const nuevoEstado = MP_STATUS_MAP[mpPayment.status ?? ''] ?? EstadoPago.PENDIENTE;
+      const nuevoEstado =
+        MP_STATUS_MAP[mpPayment.status ?? ''] ?? EstadoPago.PENDIENTE;
 
       if (!orderNumber) {
-        this.logger.warn(`Webhook payment ${dto.data.id} has no external_reference`);
+        this.logger.warn(
+          `Webhook payment ${dto.data.id} has no external_reference`,
+        );
         return;
       }
 
@@ -254,7 +290,13 @@ export class PaymentsService {
       const { count } = await this.prisma.payment.updateMany({
         where: {
           id: existingPayment.id,
-          estado: { notIn: [EstadoPago.APROBADO, EstadoPago.RECHAZADO, EstadoPago.CANCELADO] },
+          estado: {
+            notIn: [
+              EstadoPago.APROBADO,
+              EstadoPago.RECHAZADO,
+              EstadoPago.CANCELADO,
+            ],
+          },
         },
         data: { estado: nuevoEstado, mpPaymentId: String(dto.data.id) },
       });
@@ -280,13 +322,17 @@ export class PaymentsService {
       where: { orderId },
       orderBy: { createdAt: 'desc' },
     });
-    if (!payment) throw new NotFoundException('No hay registro de pago para este pedido.');
+    if (!payment)
+      throw new NotFoundException('No hay registro de pago para este pedido.');
     return payment;
   }
 
   // ─── Private helpers ──────────────────────────────────────────────────────────
 
-  private async handleApproved(orderNumber: string, payment: Payment): Promise<void> {
+  private async handleApproved(
+    orderNumber: string,
+    payment: Payment,
+  ): Promise<void> {
     // Se amplió respecto del tipo original: el evento de Meta necesita
     // productId de cada item, el teléfono/ciudad/departamento del cliente y
     // las cookies fbp/fbc del pedido. Todos ya venían en las consultas — solo
@@ -304,7 +350,13 @@ export class PaymentsService {
         ciudad: string;
         departamento: string;
       } | null;
-      items: { productId: string; nombre: string; cantidad: number; precioUnitario: number; subtotal: number }[];
+      items: {
+        productId: string;
+        nombre: string;
+        cantidad: number;
+        precioUnitario: number;
+        subtotal: number;
+      }[];
     };
 
     if (payment.orderId) {
@@ -327,7 +379,10 @@ export class PaymentsService {
           true,
         );
       } catch (err) {
-        this.logger.error(`Pago aprobado pero no se pudo confirmar el pedido ${orderNumber}`, err);
+        this.logger.error(
+          `Pago aprobado pero no se pudo confirmar el pedido ${orderNumber}`,
+          err,
+        );
         const adminEmail = this.config.get<string>('ADMIN_EMAIL');
         if (adminEmail) {
           const detalle = err instanceof Error ? err.message : String(err);
@@ -342,7 +397,9 @@ export class PaymentsService {
       // otra confirmación, a partir de los datos congelados en draftPayload.
       const draft = payment.draftPayload as unknown as DraftPayload | null;
       if (!draft) {
-        this.logger.error(`Payment ${payment.id} aprobado sin draftPayload — no se puede crear el pedido`);
+        this.logger.error(
+          `Payment ${payment.id} aprobado sin draftPayload — no se puede crear el pedido`,
+        );
         return;
       }
 
@@ -363,7 +420,10 @@ export class PaymentsService {
         // falló por falta de stock, no queda ningún pedido creado y un admin
         // debe resolverlo manualmente (reabastecer y crear el pedido a mano,
         // o reembolsar).
-        this.logger.error(`Pago aprobado pero no se pudo crear el pedido ${orderNumber}`, err);
+        this.logger.error(
+          `Pago aprobado pero no se pudo crear el pedido ${orderNumber}`,
+          err,
+        );
         const adminEmail = this.config.get<string>('ADMIN_EMAIL');
         if (adminEmail) {
           const detalle = err instanceof Error ? err.message : String(err);
@@ -414,7 +474,11 @@ export class PaymentsService {
         email: order.shippingInfo?.email,
         phone: order.shippingInfo?.telefono,
         firstName: order.shippingInfo?.nombreCompleto?.trim().split(' ')[0],
-        lastName: order.shippingInfo?.nombreCompleto?.trim().split(' ').slice(1).join(' '),
+        lastName: order.shippingInfo?.nombreCompleto
+          ?.trim()
+          .split(' ')
+          .slice(1)
+          .join(' '),
         city: order.shippingInfo?.ciudad,
         state: order.shippingInfo?.departamento,
         fbp: order.fbp,
@@ -423,7 +487,10 @@ export class PaymentsService {
     });
   }
 
-  private async handleRejected(orderNumber: string, payment: Payment): Promise<void> {
+  private async handleRejected(
+    orderNumber: string,
+    payment: Payment,
+  ): Promise<void> {
     if (!payment.orderId) {
       // Flujo nuevo: nunca existió un pedido — no hay nada que cancelar.
       // El Payment ya quedó marcado RECHAZADO/CANCELADO antes de llegar aquí.
@@ -431,7 +498,9 @@ export class PaymentsService {
     }
 
     // Compatibilidad con el flujo viejo: el pedido ya existía como PENDIENTE.
-    const order = await this.prisma.order.findUnique({ where: { id: payment.orderId } });
+    const order = await this.prisma.order.findUnique({
+      where: { id: payment.orderId },
+    });
     if (!order || order.status !== EstadoPedido.PENDIENTE) return;
 
     await this.ordersService.updateStatus(
@@ -460,7 +529,9 @@ export class PaymentsService {
       if (!ts || !v1) return false;
 
       const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
-      const expected = createHmac('sha256', secret).update(manifest).digest('hex');
+      const expected = createHmac('sha256', secret)
+        .update(manifest)
+        .digest('hex');
       return expected === v1;
     } catch {
       return false;
@@ -470,7 +541,12 @@ export class PaymentsService {
   private async generateVoucher(order: {
     orderNumber: string;
     total: number;
-    items: { nombre: string; cantidad: number; precioUnitario: number; subtotal: number }[];
+    items: {
+      nombre: string;
+      cantidad: number;
+      precioUnitario: number;
+      subtotal: number;
+    }[];
   }): Promise<Buffer> {
     const pdfDoc = await PDFDocument.create();
     const page = pdfDoc.addPage([595, 842]); // A4
@@ -486,62 +562,157 @@ export class PaymentsService {
     let y = 782;
 
     // Header
-    page.drawText('C3LECT', { x: 50, y, size: 32, font: boldFont, color: gold });
+    page.drawText('C3LECT', {
+      x: 50,
+      y,
+      size: 32,
+      font: boldFont,
+      color: gold,
+    });
 
     y -= 28;
-    page.drawText('COMPROBANTE DE PAGO', { x: 50, y, size: 14, font: boldFont, color: dark });
+    page.drawText('COMPROBANTE DE PAGO', {
+      x: 50,
+      y,
+      size: 14,
+      font: boldFont,
+      color: dark,
+    });
 
     y -= 18;
-    page.drawLine({ start: { x: 50, y }, end: { x: width - 50, y }, thickness: 1, color: lightGray });
+    page.drawLine({
+      start: { x: 50, y },
+      end: { x: width - 50, y },
+      thickness: 1,
+      color: lightGray,
+    });
 
     // Order info
     y -= 28;
     page.drawText(pdfSafe(`Numero de orden: ${order.orderNumber}`), {
-      x: 50, y, size: 11, font: boldFont, color: dark,
+      x: 50,
+      y,
+      size: 11,
+      font: boldFont,
+      color: dark,
     });
 
     y -= 20;
     const fecha = new Date().toLocaleDateString('es-CO', {
-      day: '2-digit', month: 'long', year: 'numeric',
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
     });
     page.drawText(pdfSafe(`Fecha de pago: ${fecha}`), {
-      x: 50, y, size: 11, font, color: gray,
+      x: 50,
+      y,
+      size: 11,
+      font,
+      color: gray,
     });
 
     // Products table header
     y -= 38;
     page.drawRectangle({
-      x: 50, y: y - 6, width: width - 100, height: 22,
+      x: 50,
+      y: y - 6,
+      width: width - 100,
+      height: 22,
       color: rgb(0.95, 0.95, 0.95),
     });
-    page.drawText('Producto', { x: 56, y, size: 10, font: boldFont, color: dark });
-    page.drawText('Cant.', { x: 355, y, size: 10, font: boldFont, color: dark });
-    page.drawText('Precio', { x: 400, y, size: 10, font: boldFont, color: dark });
-    page.drawText('Subtotal', { x: 460, y, size: 10, font: boldFont, color: dark });
+    page.drawText('Producto', {
+      x: 56,
+      y,
+      size: 10,
+      font: boldFont,
+      color: dark,
+    });
+    page.drawText('Cant.', {
+      x: 355,
+      y,
+      size: 10,
+      font: boldFont,
+      color: dark,
+    });
+    page.drawText('Precio', {
+      x: 400,
+      y,
+      size: 10,
+      font: boldFont,
+      color: dark,
+    });
+    page.drawText('Subtotal', {
+      x: 460,
+      y,
+      size: 10,
+      font: boldFont,
+      color: dark,
+    });
 
     for (const item of order.items) {
       y -= 22;
       const nombre = pdfSafe(
-        item.nombre.length > 42 ? item.nombre.substring(0, 39) + '...' : item.nombre,
+        item.nombre.length > 42
+          ? item.nombre.substring(0, 39) + '...'
+          : item.nombre,
       );
       page.drawText(nombre, { x: 56, y, size: 9, font, color: dark });
-      page.drawText(String(item.cantidad), { x: 365, y, size: 9, font, color: dark });
-      page.drawText(formatCOP(item.precioUnitario), { x: 395, y, size: 9, font, color: dark });
-      page.drawText(formatCOP(item.subtotal), { x: 455, y, size: 9, font, color: dark });
+      page.drawText(String(item.cantidad), {
+        x: 365,
+        y,
+        size: 9,
+        font,
+        color: dark,
+      });
+      page.drawText(formatCOP(item.precioUnitario), {
+        x: 395,
+        y,
+        size: 9,
+        font,
+        color: dark,
+      });
+      page.drawText(formatCOP(item.subtotal), {
+        x: 455,
+        y,
+        size: 9,
+        font,
+        color: dark,
+      });
     }
 
     y -= 14;
-    page.drawLine({ start: { x: 50, y }, end: { x: width - 50, y }, thickness: 0.5, color: lightGray });
+    page.drawLine({
+      start: { x: 50, y },
+      end: { x: width - 50, y },
+      thickness: 0.5,
+      color: lightGray,
+    });
 
     // Total
     y -= 22;
-    page.drawText('TOTAL:', { x: 400, y, size: 13, font: boldFont, color: dark });
-    page.drawText(`${formatCOP(order.total)} COP`, { x: 455, y, size: 13, font: boldFont, color: gold });
+    page.drawText('TOTAL:', {
+      x: 400,
+      y,
+      size: 13,
+      font: boldFont,
+      color: dark,
+    });
+    page.drawText(`${formatCOP(order.total)} COP`, {
+      x: 455,
+      y,
+      size: 13,
+      font: boldFont,
+      color: gold,
+    });
 
     // Footer
     y -= 70;
     page.drawText(pdfSafe('Gracias por tu compra en C3LECT'), {
-      x: width / 2 - 105, y, size: 12, font: boldFont, color: gray,
+      x: width / 2 - 105,
+      y,
+      size: 12,
+      font: boldFont,
+      color: gray,
     });
 
     const pdfBytes = await pdfDoc.save();

@@ -96,8 +96,12 @@ export class PaymentsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Estado del pago de un pedido' })
-  @ApiOkResponse({ description: 'Registro de pago más reciente para el pedido' })
-  @ApiNotFoundResponse({ description: 'No hay registro de pago para este pedido' })
+  @ApiOkResponse({
+    description: 'Registro de pago más reciente para el pedido',
+  })
+  @ApiNotFoundResponse({
+    description: 'No hay registro de pago para este pedido',
+  })
   getPayment(@Param('orderId') orderId: string) {
     return this.paymentsService.getByOrderId(orderId);
   }

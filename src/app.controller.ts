@@ -8,7 +8,10 @@ export class AppController {
   constructor(private readonly prisma: PrismaService) {}
 
   @Get('health')
-  @ApiOperation({ summary: 'Chequeo de salud: confirma que la app y la base de datos responden' })
+  @ApiOperation({
+    summary:
+      'Chequeo de salud: confirma que la app y la base de datos responden',
+  })
   async health() {
     await this.prisma.$queryRaw`SELECT 1`;
     return { status: 'ok' };

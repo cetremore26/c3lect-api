@@ -32,4 +32,18 @@ export default tseslint.config(
       "prettier/prettier": ["error", { endOfLine: "auto" }],
     },
   },
+  {
+    // Los specs mockean PrismaService/DTOs con objetos livianos vía `as any` y usan
+    // expect.objectContaining (que @types/jest tipa como `any`) — @typescript-eslint no
+    // puede distinguir eso de un `any` real de producción. Relajar aquí evita perseguir
+    // falsos positivos de "unsafe" en cada mock sin bajar la guardia en src real.
+    files: ['**/*.spec.ts'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+    },
+  },
 );

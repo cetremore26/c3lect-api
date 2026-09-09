@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsDateString, IsEnum, IsInt, IsString, MaxLength, Min } from 'class-validator';
+import {
+  IsDateString,
+  IsEnum,
+  IsInt,
+  IsString,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 export enum CategoriaCompra {
   Reloj = 'Reloj',

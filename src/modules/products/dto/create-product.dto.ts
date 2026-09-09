@@ -9,7 +9,6 @@ import {
   MinLength,
   MaxLength,
   IsArray,
-  Min,
 } from 'class-validator';
 import { CATEGORIAS } from '../../../common/categoria.util';
 
