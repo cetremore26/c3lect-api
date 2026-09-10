@@ -1,30 +1,28 @@
 import { NotFoundException } from '@nestjs/common';
 import { PreciosService } from './precios.service';
 
-const crearPrisma = () => ({
-  precioProducto: {
-    findMany: jest.fn(),
-    findUnique: jest.fn(),
-    create: jest.fn(),
-    update: jest.fn(),
-  },
-  product: { updateMany: jest.fn() },
+const crearRepository = () => ({
+  findAll: jest.fn(),
+  findById: jest.fn(),
+  create: jest.fn(),
+  update: jest.fn(),
+  syncPrecioPublico: jest.fn().mockResolvedValue(undefined),
 });
 
 describe('PreciosService', () => {
-  let prisma: ReturnType<typeof crearPrisma>;
+  let repository: ReturnType<typeof crearRepository>;
   let audit: { log: jest.Mock };
   let service: PreciosService;
 
   beforeEach(() => {
-    prisma = crearPrisma();
+    repository = crearRepository();
     audit = { log: jest.fn().mockResolvedValue(undefined) };
-    service = new PreciosService(prisma as any, audit as any);
+    service = new PreciosService(repository as any, audit as any);
   });
 
   describe('findAll', () => {
     it('calcula gananciaMinima como precioCierre menos costoTotal', async () => {
-      prisma.precioProducto.findMany.mockResolvedValue([
+      repository.findAll.mockResolvedValue([
         { id: '1', modelo: 'Grant', costoTotal: 100000, precioCierre: 160000 },
       ]);
 
@@ -34,7 +32,7 @@ describe('PreciosService', () => {
     });
 
     it('deja gananciaMinima en null cuando no hay precio de cierre', async () => {
-      prisma.precioProducto.findMany.mockResolvedValue([
+      repository.findAll.mockResolvedValue([
         { id: '1', modelo: 'Grant', costoTotal: 100000, precioCierre: null },
       ]);
 
@@ -44,7 +42,7 @@ describe('PreciosService', () => {
     });
 
     it('reporta ganancia negativa cuando se cierra por debajo del costo', async () => {
-      prisma.precioProducto.findMany.mockResolvedValue([
+      repository.findAll.mockResolvedValue([
         { id: '1', modelo: 'Grant', costoTotal: 100000, precioCierre: 80000 },
       ]);
 
@@ -54,7 +52,7 @@ describe('PreciosService', () => {
     });
 
     it('trata un precio de cierre de cero como valor valido, no como ausente', async () => {
-      prisma.precioProducto.findMany.mockResolvedValue([
+      repository.findAll.mockResolvedValue([
         { id: '1', modelo: 'Grant', costoTotal: 50000, precioCierre: 0 },
       ]);
 
@@ -74,32 +72,30 @@ describe('PreciosService', () => {
     } as any;
 
     beforeEach(() => {
-      prisma.precioProducto.create.mockResolvedValue({ id: 'p1' });
+      repository.create.mockResolvedValue({ id: 'p1' });
     });
 
     it('deriva costoTotal sumando costo unitario y adicional', async () => {
       await service.create(dto);
 
-      expect(prisma.precioProducto.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ costoTotal: 145028 }),
-        }),
+      expect(repository.create).toHaveBeenCalledWith(
+        expect.objectContaining({ costoTotal: 145028 }),
       );
     });
 
     it('propaga el precio publico al catalogo usando marca mas modelo', async () => {
       await service.create(dto);
 
-      expect(prisma.product.updateMany).toHaveBeenCalledWith({
-        where: { nombre: { equals: 'Fossil Grant', mode: 'insensitive' } },
-        data: { precio: 250000 },
-      });
+      expect(repository.syncPrecioPublico).toHaveBeenCalledWith(
+        'Fossil Grant',
+        250000,
+      );
     });
 
     it('no toca el catalogo cuando no se define precio publico', async () => {
       await service.create({ ...dto, precioPublico: undefined });
 
-      expect(prisma.product.updateMany).not.toHaveBeenCalled();
+      expect(repository.syncPrecioPublico).not.toHaveBeenCalled();
     });
 
     it('registra la creacion en auditoria', async () => {
@@ -127,29 +123,30 @@ describe('PreciosService', () => {
     };
 
     beforeEach(() => {
-      prisma.precioProducto.findUnique.mockResolvedValue(existente);
-      prisma.precioProducto.update.mockResolvedValue({ id: 'p1' });
+      repository.findById.mockResolvedValue(existente);
+      repository.update.mockResolvedValue({ id: 'p1' });
     });
 
     it('lanza NotFoundException si el registro no existe', async () => {
-      prisma.precioProducto.findUnique.mockResolvedValue(null);
+      repository.findById.mockRejectedValue(
+        new NotFoundException('Producto inexistente no encontrado'),
+      );
 
       await expect(service.update('inexistente', {})).rejects.toThrow(
         NotFoundException,
       );
-      expect(prisma.precioProducto.update).not.toHaveBeenCalled();
+      expect(repository.update).not.toHaveBeenCalled();
     });
 
     it('conserva los valores existentes que el dto no envia', async () => {
       await service.update('p1', { costoUnitario: 130000 });
 
-      expect(prisma.precioProducto.update).toHaveBeenCalledWith(
+      expect(repository.update).toHaveBeenCalledWith(
+        'p1',
         expect.objectContaining({
-          data: expect.objectContaining({
-            costoUnitario: 130000,
-            costoAdicional: 25028,
-            costoTotal: 155028,
-          }),
+          costoUnitario: 130000,
+          costoAdicional: 25028,
+          costoTotal: 155028,
         }),
       );
     });
@@ -157,17 +154,16 @@ describe('PreciosService', () => {
     it('permite poner el precio de cierre en null explicitamente', async () => {
       await service.update('p1', { precioCierre: null } as any);
 
-      expect(prisma.precioProducto.update).toHaveBeenCalledWith(
-        expect.objectContaining({
-          data: expect.objectContaining({ precioCierre: null }),
-        }),
+      expect(repository.update).toHaveBeenCalledWith(
+        'p1',
+        expect.objectContaining({ precioCierre: null }),
       );
     });
 
     it('no propaga al catalogo si el precio publico llega en null', async () => {
       await service.update('p1', { precioPublico: null } as any);
 
-      expect(prisma.product.updateMany).not.toHaveBeenCalled();
+      expect(repository.syncPrecioPublico).not.toHaveBeenCalled();
     });
 
     it('propaga usando la marca almacenada, no la del dto', async () => {
@@ -176,10 +172,10 @@ describe('PreciosService', () => {
         marca: 'Casio',
       } as any);
 
-      expect(prisma.product.updateMany).toHaveBeenCalledWith({
-        where: { nombre: { equals: 'Fossil Grant', mode: 'insensitive' } },
-        data: { precio: 300000 },
-      });
+      expect(repository.syncPrecioPublico).toHaveBeenCalledWith(
+        'Fossil Grant',
+        300000,
+      );
     });
   });
 });
