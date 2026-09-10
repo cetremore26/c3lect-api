@@ -1,141 +1,61 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { InventarioRepository, SeedRow } from './inventario.repository';
+import {
+  agruparComprasPorModelo,
+  calcularStock,
+  capitalItem,
+  contarVentasPorModelo,
+} from './inventario.util';
 
 const COSTO_ADICIONAL_DEFAULT = 25028;
 
 @Injectable()
 export class InventarioService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly inventarioRepository: InventarioRepository,
     private readonly audit: AuditService,
   ) {}
 
   async findAll() {
-    const items = await this.prisma.inventarioMaestro.findMany({
-      orderBy: [{ stock: 'desc' }, { modelo: 'asc' }],
-    });
+    const items = await this.inventarioRepository.findAll();
     return items.map((i) => ({
       ...i,
-      capitalItem: i.stock * i.costoUnitario,
+      capitalItem: capitalItem(i.stock, i.costoUnitario),
     }));
   }
 
-  async stockPublico() {
-    const items = await this.prisma.inventarioMaestro.findMany({
-      select: { modelo: true, stock: true },
-    });
-    return items;
+  stockPublico() {
+    return this.inventarioRepository.findStockPublico();
   }
 
   async seed(userId?: string) {
     const [compras, ventas] = await Promise.all([
-      this.prisma.purchase.findMany({
-        select: {
-          marca: true,
-          modelo: true,
-          cantidad: true,
-          costoUnitario: true,
-          categoria: true,
-        },
-      }),
-      this.prisma.historicalSale.findMany({
-        select: { modelo: true },
-      }),
+      this.inventarioRepository.findComprasParaSeed(),
+      this.inventarioRepository.findVentasParaSeed(),
     ]);
 
-    // Agrupar compras por modelo. NOTA: mientras InventarioMaestro.modelo siga siendo la única
-    // llave (@unique de una sola columna, hasta que el backfill de marca esté completo y se
-    // pase a @@unique([marca, modelo])), dos marcas distintas con el mismo modelo corto todavía
-    // colisionan en una sola fila — riesgo aceptado y documentado para esta ventana de transición.
-    const porModelo: Record<
-      string,
-      {
-        marca: string | null;
-        cantidad: number;
-        costoUnitario: number;
-        categoria: string;
-      }
-    > = {};
-    for (const c of compras) {
-      if (!porModelo[c.modelo]) {
-        porModelo[c.modelo] = {
-          marca: c.marca,
-          cantidad: 0,
-          costoUnitario: c.costoUnitario,
-          categoria: c.categoria,
-        };
-      }
-      porModelo[c.modelo].cantidad += c.cantidad;
-      porModelo[c.modelo].costoUnitario = c.costoUnitario; // usa el más reciente
-      porModelo[c.modelo].marca = c.marca ?? porModelo[c.modelo].marca; // usa la más reciente no nula
-    }
-
-    // Toda venta (incluso Uso Personal con precioVenta=0) descuenta stock físico
-    const ventasPorModelo: Record<string, number> = {};
-    for (const v of ventas) {
-      ventasPorModelo[v.modelo] = (ventasPorModelo[v.modelo] ?? 0) + 1;
-    }
-
+    const porModelo = agruparComprasPorModelo(compras);
+    const ventasPorModelo = contarVentasPorModelo(ventas);
     const modelosActivos = Object.keys(porModelo);
 
-    const upsertados = await this.prisma.$transaction(
-      async (tx) => {
-        // Eliminar entradas huérfanas (modelos que ya no existen en ninguna compra)
-        await tx.inventarioMaestro.deleteMany({
-          where: { modelo: { notIn: modelosActivos } },
-        });
-        // En precios: solo eliminar entradas sin precios manuales (auto-creadas desde compras)
-        await tx.precioProducto.deleteMany({
-          where: {
-            modelo: { notIn: modelosActivos },
-            precioPublico: null,
-            precioCierre: null,
-          },
-        });
+    const filas: SeedRow[] = modelosActivos.map((modelo) => {
+      const datos = porModelo[modelo];
+      const vendidos = ventasPorModelo[modelo] ?? 0;
+      return {
+        modelo,
+        marca: datos.marca,
+        stock: calcularStock(datos.cantidad, vendidos),
+        costoUnitario: datos.costoUnitario,
+        categoria: datos.categoria,
+        costoTotal: datos.costoUnitario + COSTO_ADICIONAL_DEFAULT,
+        costoAdicional: COSTO_ADICIONAL_DEFAULT,
+      };
+    });
 
-        let count = 0;
-        for (const [modelo, datos] of Object.entries(porModelo)) {
-          const vendidos = ventasPorModelo[modelo] ?? 0;
-          const stock = Math.max(0, datos.cantidad - vendidos);
-          const costoTotal = datos.costoUnitario + COSTO_ADICIONAL_DEFAULT;
-
-          await tx.inventarioMaestro.upsert({
-            where: { modelo },
-            update: {
-              marca: datos.marca,
-              stock,
-              costoUnitario: datos.costoUnitario,
-              categoria: datos.categoria,
-            },
-            create: {
-              marca: datos.marca,
-              modelo,
-              stock,
-              costoUnitario: datos.costoUnitario,
-              categoria: datos.categoria,
-            },
-          });
-          await tx.precioProducto.upsert({
-            where: { modelo },
-            update: {
-              marca: datos.marca,
-              costoUnitario: datos.costoUnitario,
-              costoTotal,
-            },
-            create: {
-              marca: datos.marca,
-              modelo,
-              costoUnitario: datos.costoUnitario,
-              costoAdicional: COSTO_ADICIONAL_DEFAULT,
-              costoTotal,
-            },
-          });
-          count++;
-        }
-        return count;
-      },
-      { timeout: 15000 },
+    const upsertados = await this.inventarioRepository.applySeed(
+      modelosActivos,
+      filas,
     );
 
     await this.audit.log(
