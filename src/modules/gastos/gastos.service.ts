@@ -1,30 +1,28 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateGastoDto } from './dto/create-gasto.dto';
 import { UpdateGastoDto } from './dto/update-gasto.dto';
+import { GastosRepository } from './gastos.repository';
 
 @Injectable()
 export class GastosService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly gastosRepository: GastosRepository,
     private readonly audit: AuditService,
   ) {}
 
   findAll() {
-    return this.prisma.expense.findMany({ orderBy: { fecha: 'desc' } });
+    return this.gastosRepository.findAll();
   }
 
   async create(dto: CreateGastoDto, userId?: string) {
-    const gasto = await this.prisma.expense.create({
-      data: {
-        fecha: new Date(dto.fecha),
-        concepto: dto.concepto,
-        monto: dto.monto,
-        responsable: dto.responsable ?? null,
-        estado: dto.estado ?? null,
-      },
+    const gasto = await this.gastosRepository.create({
+      fecha: new Date(dto.fecha),
+      concepto: dto.concepto,
+      monto: dto.monto,
+      responsable: dto.responsable ?? null,
+      estado: dto.estado ?? null,
     });
 
     await this.audit.log(
@@ -39,7 +37,8 @@ export class GastosService {
   }
 
   async update(id: string, dto: UpdateGastoDto, userId?: string) {
-    await this.assertExists(id);
+    await this.gastosRepository.findById(id);
+
     const data: Prisma.ExpenseUpdateInput = {};
     if (dto.fecha) data.fecha = new Date(dto.fecha);
     if (dto.concepto) data.concepto = dto.concepto;
@@ -47,7 +46,7 @@ export class GastosService {
     if (dto.responsable !== undefined) data.responsable = dto.responsable;
     if (dto.estado !== undefined) data.estado = dto.estado;
 
-    const gasto = await this.prisma.expense.update({ where: { id }, data });
+    const gasto = await this.gastosRepository.update(id, data);
 
     await this.audit.log(
       'EDITAR',
@@ -61,8 +60,8 @@ export class GastosService {
   }
 
   async remove(id: string, userId?: string) {
-    const existing = await this.assertExists(id);
-    await this.prisma.expense.delete({ where: { id } });
+    const existing = await this.gastosRepository.findById(id);
+    await this.gastosRepository.remove(id);
 
     await this.audit.log(
       'ELIMINAR',
@@ -71,11 +70,5 @@ export class GastosService {
       `Gasto eliminado: ${existing.concepto} — $${existing.monto.toLocaleString('es-CO')}`,
       userId,
     );
-  }
-
-  private async assertExists(id: string) {
-    const found = await this.prisma.expense.findUnique({ where: { id } });
-    if (!found) throw new NotFoundException(`Gasto ${id} no encontrado`);
-    return found;
   }
 }
