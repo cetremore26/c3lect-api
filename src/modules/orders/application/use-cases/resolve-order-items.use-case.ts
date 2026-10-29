@@ -1,6 +1,6 @@
-import { BadRequestException, Inject, Injectable } from '@nestjs/common';
-import { deriveMarcaModeloFromProduct } from '../../../../common/marca-modelo.util';
-import { PromotionsService } from '../../../promotions/promotions.service';
+import { Inject, Injectable } from '@nestjs/common';
+import { BusinessRuleViolation } from '../../../../shared/domain/domain-error';
+import { deriveMarcaModeloFromProduct } from '../../../../shared/domain/marca-modelo.util';
 import {
   PricedOrder,
   RequestedItem,
@@ -10,6 +10,8 @@ import { INVENTORY_LOOKUP } from '../ports/inventory-lookup.port';
 import type { InventoryLookupPort } from '../ports/inventory-lookup.port';
 import { ORDER_PRODUCT_CATALOG } from '../ports/order-product-catalog.port';
 import type { OrderProductCatalogPort } from '../ports/order-product-catalog.port';
+import { PRICE_QUOTE } from '../ports/price-quote.port';
+import type { PriceQuotePort } from '../ports/price-quote.port';
 
 @Injectable()
 export class ResolveOrderItemsUseCase {
@@ -18,15 +20,14 @@ export class ResolveOrderItemsUseCase {
     private readonly catalog: OrderProductCatalogPort,
     @Inject(INVENTORY_LOOKUP)
     private readonly inventory: InventoryLookupPort,
-    private readonly promotions: PromotionsService,
+    @Inject(PRICE_QUOTE) private readonly prices: PriceQuotePort,
   ) {}
 
   // Resuelve precios server-side (nunca confía en lo que envía el cliente) y
-  // hace una verificación best-effort de stock. El guard autoritativo sigue
-  // siendo el de OrderRepositoryPort.transitionStatus/createConfirmed, que
-  // vuelve a revisar el stock justo antes de confirmar/materializar el
-  // pedido. `autenticado` determina si aplican promociones con
-  // soloCuentaActiva=true (ver modules/promotions).
+  // hace una verificación best-effort de stock. El guard autoritativo es el
+  // de inventario al reaccionar a PedidoConfirmado, que vuelve a revisar el
+  // stock dentro de la transacción de la confirmación. `autenticado`
+  // determina si aplican promociones con soloCuentaActiva=true.
   async execute(
     items: RequestedItem[],
     autenticado = false,
@@ -36,26 +37,24 @@ export class ResolveOrderItemsUseCase {
 
     const missing = productIds.filter((id) => !products.has(id));
     if (missing.length > 0) {
-      throw new BadRequestException(
+      throw new BusinessRuleViolation(
         `Producto(s) no disponible(s): ${missing.join(', ')}`,
       );
     }
 
-    const promocionesVigentes = await this.promotions.getPromocionesVigentes();
-    const priced = priceOrderItems(
-      items,
-      products,
-      promocionesVigentes,
+    const precios = await this.prices.preciosFinales(
+      [...products.values()],
       autenticado,
     );
+    const priced = priceOrderItems(items, products, precios);
 
     for (const item of priced.itemsData) {
       const product = products.get(item.productId)!;
       const { modelo } = deriveMarcaModeloFromProduct(product);
-      const inv = await this.inventory.findByModelo(modelo, product.nombre);
-      if (inv && inv.stock < item.cantidad) {
-        throw new BadRequestException(
-          `Stock insuficiente para "${item.nombre}" (disponible: ${inv.stock}, solicitado: ${item.cantidad}).`,
+      const stock = await this.inventory.stockDe(modelo, product.nombre);
+      if (stock !== null && stock < item.cantidad) {
+        throw new BusinessRuleViolation(
+          `Stock insuficiente para "${item.nombre}" (disponible: ${stock}, solicitado: ${item.cantidad}).`,
         );
       }
     }

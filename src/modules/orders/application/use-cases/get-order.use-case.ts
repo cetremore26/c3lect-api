@@ -1,9 +1,10 @@
+import { Inject, Injectable } from '@nestjs/common';
 import {
-  ForbiddenException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+  ForbiddenError,
+  NotFoundError,
+} from '../../../../shared/domain/domain-error';
+import { OrderStatusTransition } from '../../domain/order-status';
+import { Requester } from '../commands';
 import { ORDER_REPOSITORY } from '../ports/order-repository.port';
 import type { OrderRepositoryPort } from '../ports/order-repository.port';
 
@@ -13,14 +14,21 @@ export class GetOrderUseCase {
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepositoryPort,
   ) {}
 
-  async execute(id: string, userId?: string, rol?: string) {
+  async execute(id: string, { userId, rol }: Requester) {
     const order = await this.orders.findById(id);
-    if (!order) throw new NotFoundException('Pedido no encontrado.');
+    if (!order) throw new NotFoundError('Pedido no encontrado.');
 
     if (rol !== 'ADMIN' && order.userId !== userId) {
-      throw new ForbiddenException('No tienes permiso para ver este pedido.');
+      throw new ForbiddenError('No tienes permiso para ver este pedido.');
     }
 
-    return order;
+    // La UI ofrece solo los cambios de estado que la máquina de estados
+    // permite, en vez de mantener su propia copia de las reglas.
+    return {
+      ...order,
+      transicionesPermitidas: OrderStatusTransition.permitidasDesde(
+        order.status,
+      ),
+    };
   }
 }

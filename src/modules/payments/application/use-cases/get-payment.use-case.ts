@@ -1,4 +1,5 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { NotFoundError } from '../../../../shared/domain/domain-error';
 import { PAYMENT_REPOSITORY } from '../ports/payment-repository.port';
 import type { PaymentRepositoryPort } from '../ports/payment-repository.port';
 
@@ -12,7 +13,7 @@ export class GetPaymentUseCase {
   async execute(orderId: string) {
     const payment = await this.payments.findMostRecentByOrderId(orderId);
     if (!payment)
-      throw new NotFoundException('No hay registro de pago para este pedido.');
+      throw new NotFoundError('No hay registro de pago para este pedido.');
     return payment;
   }
 }

@@ -1,18 +1,15 @@
-import {
-  calcularPrecioFinal,
-  mejorDescuento,
-  PromocionLike,
-  ProductoLike,
-} from '../../promotions/promotions.util';
+// Función pura de dominio: dado el catálogo ya cargado y el precio final que
+// cotizó promociones para cada producto, arma las líneas del pedido. Nunca
+// confía en precios que mande el cliente — esa es la razón de ser de esta
+// pieza. Las reglas de descuento son del contexto promotions; aquí solo
+// llega su resultado.
 
-// Función pura de dominio: dado el catálogo ya cargado y las promociones
-// vigentes, calcula el precio real de cada item. Nunca confía en precios que
-// mande el cliente — esa es la razón de ser de esta pieza. Sin dependencias
-// de Prisma/Nest para poder testearla en aislamiento.
-
-export interface PriceableProduct extends ProductoLike {
+export interface PriceableProduct {
+  id: string;
   nombre: string;
   precio: number;
+  cat: string;
+  marca: string | null;
 }
 
 export interface RequestedItem {
@@ -37,20 +34,11 @@ export interface PricedOrder {
 export function priceOrderItems(
   items: RequestedItem[],
   products: Map<string, PriceableProduct>,
-  promocionesVigentes: PromocionLike[],
-  autenticado: boolean,
+  preciosFinales: Map<string, number>,
 ): PricedOrder {
   const itemsData = items.map((item) => {
     const product = products.get(item.productId)!;
-    const descuentoPorcentaje = mejorDescuento(
-      promocionesVigentes,
-      product,
-      autenticado,
-    );
-    const precioUnitario = calcularPrecioFinal(
-      product.precio,
-      descuentoPorcentaje,
-    );
+    const precioUnitario = preciosFinales.get(item.productId) ?? product.precio;
     return {
       productId: item.productId,
       nombre: product.nombre,

@@ -8,15 +8,13 @@ describe('priceOrderItems', () => {
     cat: 'relojes',
     precio: 1000,
   };
+  const products = new Map([[producto.id, producto]]);
 
-  it('calcula precio y subtotal sin promociones', () => {
-    const products = new Map([[producto.id, producto]]);
-
+  it('sin precio cotizado, usa el precio de catalogo', () => {
     const result = priceOrderItems(
       [{ productId: 'prod-1', cantidad: 3 }],
       products,
-      [],
-      false,
+      new Map(),
     );
 
     expect(result.itemsData[0].precioUnitario).toBe(1000);
@@ -25,29 +23,20 @@ describe('priceOrderItems', () => {
     expect(result.total).toBe(3000);
   });
 
-  it('aplica el mejor descuento vigente que corresponda al producto', () => {
-    const products = new Map([[producto.id, producto]]);
-    const promocion = {
-      alcance: 'PRODUCTO' as const,
-      porcentaje: 20,
-      productosIncluidos: ['prod-1'],
-      categoria: null,
-      marca: null,
-      excluidos: [],
-      soloCuentaActiva: false,
-      fechaInicio: new Date('2020-01-01'),
-      fechaFin: new Date('2999-01-01'),
-      activo: true,
-    };
-
+  it('usa el precio final cotizado (con promociones) cuando existe', () => {
     const result = priceOrderItems(
-      [{ productId: 'prod-1', cantidad: 1 }],
+      [{ productId: 'prod-1', cantidad: 2 }],
       products,
-      [promocion],
-      false,
+      new Map([['prod-1', 800]]),
     );
 
-    expect(result.itemsData[0].precioUnitario).toBe(800);
-    expect(result.total).toBe(800);
+    expect(result.itemsData[0]).toEqual({
+      productId: 'prod-1',
+      nombre: 'Rolex Submariner',
+      precioUnitario: 800,
+      cantidad: 2,
+      subtotal: 1600,
+    });
+    expect(result.total).toBe(1600);
   });
 });

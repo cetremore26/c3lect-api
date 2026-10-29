@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundError } from '../../../../shared/domain/domain-error';
 import { GetPaymentUseCase } from './get-payment.use-case';
 
 describe('GetPaymentUseCase', () => {
@@ -14,12 +14,12 @@ describe('GetPaymentUseCase', () => {
     expect(payments.findMostRecentByOrderId).toHaveBeenCalledWith('order-1');
   });
 
-  it('lanza NotFoundException si no hay pago para el pedido', async () => {
+  it('lanza NotFoundError si no hay pago para el pedido', async () => {
     const payments = {
       findMostRecentByOrderId: jest.fn().mockResolvedValue(null),
     };
     const useCase = new GetPaymentUseCase(payments as any);
 
-    await expect(useCase.execute('order-1')).rejects.toThrow(NotFoundException);
+    await expect(useCase.execute('order-1')).rejects.toThrow(NotFoundError);
   });
 });
