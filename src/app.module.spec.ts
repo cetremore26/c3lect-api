@@ -1,5 +1,4 @@
 import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
 import { InProcessEventBus } from './shared/infrastructure/events/in-process-event-bus';
 import { PrismaService } from './shared/infrastructure/prisma/prisma.service';
 
@@ -30,8 +29,16 @@ describe('AppModule (composition root)', () => {
     jest.spyOn(PrismaService.prototype, '$connect').mockResolvedValue();
     jest.spyOn(PrismaService.prototype, '$disconnect').mockResolvedValue();
 
+    // Import diferido: ConfigModule.forRoot() valida el entorno al importar
+    // app.module, así que debe ocurrir después de asignar las variables. Con
+    // un import estático la prueba solo pasaba donde hay un .env local (no en CI).
+    const { AppModule } =
+      jest.requireActual<typeof import('./app.module')>('./app.module');
+
     const moduleRef = await NestFactory.createApplicationContext(AppModule, {
       logger: false,
+      // Sin esto Nest llama process.exit al fallar y jest no muestra el motivo.
+      abortOnError: false,
     });
 
     const bus = moduleRef.get(InProcessEventBus);
