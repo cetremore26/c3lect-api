@@ -1,36 +1,73 @@
-import { EstadoPedido, MetodoPago, Prisma } from '@prisma/client';
+import type { EstadoPedido, MetodoPago } from '../../domain/order-status';
 
-// El puerto solo importa *tipos* generados por Prisma (vocabulario de datos
-// compartido, igual que ya hace ProductsService con Prisma.ProductWhereInput)
-// — nunca el PrismaClient/query-builder en sí. Eso es lo que se confina a
-// infrastructure/.
+// Modelos de lectura del pedido, en vocabulario propio. Antes eran
+// Prisma.OrderGetPayload<...>: cambiar de ORM obligaba a tocar los casos de
+// uso. La forma coincide con lo que devuelve la API, así que el JSON que ve
+// el frontend no cambió.
 
 export const ORDER_REPOSITORY = Symbol('ORDER_REPOSITORY');
 
-export type OrderListItem = Prisma.OrderGetPayload<{
-  include: {
-    items: true;
-    shippingInfo: true;
-    user: { select: { id: true; email: true; nombre: true } };
-  };
-}>;
-export type OrderDetail = Prisma.OrderGetPayload<{
-  include: {
-    items: true;
-    shippingInfo: true;
-    statusHistory: true;
-    user: { select: { id: true; email: true; nombre: true } };
-  };
-}>;
-export type OrderForStatusTransition = Prisma.OrderGetPayload<{
-  include: { items: true; shippingInfo: true; user: true };
-}>;
-export type CreatedOrder = Prisma.OrderGetPayload<{
-  include: { items: true; shippingInfo: true; statusHistory: true };
-}>;
-export type OrderForPayment = Prisma.OrderGetPayload<{
-  include: { items: true; shippingInfo: true };
-}>;
+export interface ShippingData {
+  nombreCompleto: string;
+  email: string;
+  telefono: string;
+  ciudad: string;
+  departamento: string;
+  direccion: string;
+  notas?: string | null;
+}
+
+export interface OrderItemData {
+  productId: string;
+  nombre: string;
+  precioUnitario: number;
+  cantidad: number;
+  subtotal: number;
+}
+
+export interface StatusHistoryEntry {
+  id: string;
+  orderId: string;
+  statusAnterior: EstadoPedido | null;
+  statusNuevo: EstadoPedido;
+  changedBy: string | null;
+  createdAt: Date;
+}
+
+export interface OrderSnapshot {
+  id: string;
+  orderNumber: string;
+  userId: string | null;
+  status: EstadoPedido;
+  subtotal: number;
+  total: number;
+  paymentMethod: MetodoPago;
+  fbp: string | null;
+  fbc: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  items: (OrderItemData & { id: string; orderId: string })[];
+  shippingInfo:
+    | (ShippingData & { id: string; orderId: string; notas: string | null })
+    | null;
+}
+
+export interface OrderUserRef {
+  id: string;
+  email: string;
+  nombre: string;
+}
+
+export type OrderListItem = OrderSnapshot & { user: OrderUserRef | null };
+export type OrderDetail = OrderListItem & {
+  statusHistory: StatusHistoryEntry[];
+};
+export type CreatedOrder = OrderSnapshot & {
+  statusHistory: StatusHistoryEntry[];
+};
+export type OrderForStatusTransition = OrderSnapshot & {
+  user: { nombre: string } | null;
+};
 
 export interface OrderListFilter {
   userId?: string;
@@ -49,18 +86,22 @@ export interface NewOrderData {
   paymentMethod: MetodoPago;
   fbp: string | null;
   fbc: string | null;
-  items: {
-    productId: string;
-    nombre: string;
-    precioUnitario: number;
-    cantidad: number;
-    subtotal: number;
-  }[];
-  shippingInfo: Prisma.ShippingInfoCreateWithoutOrderInput;
+  items: OrderItemData[];
+  shippingInfo: ShippingData;
 }
 
-export type NewConfirmedOrderData = NewOrderData;
+export interface UserOrderSummary {
+  id: string;
+  orderNumber: string;
+  status: EstadoPedido;
+  total: number;
+  createdAt: Date;
+  items: { nombre: string; cantidad: number }[];
+}
 
+// Solo persistencia de pedidos y sus tablas hijas (items, envío, historial).
+// El stock y las ventas ya no se tocan aquí: son de inventario y ventas, que
+// reaccionan a PedidoConfirmado dentro de la misma unidad de trabajo.
 export interface OrderRepositoryPort {
   findMany(
     filter: OrderListFilter,
@@ -74,28 +115,24 @@ export interface OrderRepositoryPort {
     id: string,
   ): Promise<OrderForStatusTransition | null>;
 
-  /** Shape mínimo que necesita PaymentsService para crear una preferencia o decidir si cancela. */
-  findByIdForPayment(id: string): Promise<OrderForPayment | null>;
+  findByIdForPayment(id: string): Promise<OrderSnapshot | null>;
 
   create(data: NewOrderData): Promise<CreatedOrder>;
 
-  /** Crea el pedido ya en CONFIRMADO y aplica el mismo descuento de stock + registro de ventas que una confirmación normal, todo en una sola transacción atómica. */
-  createConfirmed(data: NewConfirmedOrderData): Promise<CreatedOrder>;
+  /** Crea el pedido directamente en CONFIRMADO, con su historial. */
+  createConfirmed(data: NewOrderData, changedBy: string): Promise<CreatedOrder>;
 
-  /**
-   * Aplica un cambio de estado (update + historial) y, si corresponde según
-   * la máquina de estados de dominio, el descuento/reversión de stock y el
-   * registro/borrado de ventas — todo en una única transacción atómica.
-   * Devuelve el pedido con los datos necesarios para notificar al cliente.
-   */
+  /** Cambia el estado y agrega la fila de historial. */
   transitionStatus(params: {
     orderId: string;
     statusAnterior: EstadoPedido;
     statusNuevo: EstadoPedido;
     changedBy: string;
-    aplicarConfirmacion: boolean;
-    revertirConfirmacion: boolean;
   }): Promise<OrderForStatusTransition>;
 
   linkGuestOrders(email: string, userId: string): Promise<void>;
+
+  totalsByUser(userIds: string[]): Promise<{ userId: string; total: number }[]>;
+
+  listByUser(userId: string): Promise<UserOrderSummary[]>;
 }

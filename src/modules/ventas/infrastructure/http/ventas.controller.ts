@@ -1,0 +1,53 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Param,
+  Post,
+  Put,
+  UseGuards,
+} from '@nestjs/common';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { VentasService } from '../../application/ventas.service';
+import { CreateVentaDto } from './dto/create-venta.dto';
+import { UpdateVentaDto } from './dto/update-venta.dto';
+import { JwtAuthGuard } from '../../../../shared/infrastructure/http/auth/jwt-auth.guard';
+import { RolesGuard } from '../../../../shared/infrastructure/http/auth/roles.guard';
+import { Roles } from '../../../../shared/infrastructure/http/auth/roles.decorator';
+import { CurrentUser } from '../../../../shared/infrastructure/http/auth/current-user.decorator';
+
+@ApiTags('Ventas')
+@Controller('ventas')
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles('ADMIN')
+@ApiBearerAuth()
+export class VentasController {
+  constructor(private readonly ventasService: VentasService) {}
+
+  @Post()
+  @ApiOperation({ summary: 'Registrar nueva venta histórica (ADMIN)' })
+  create(@Body() dto: CreateVentaDto, @CurrentUser() user: { id: string }) {
+    return this.ventasService.create(dto, user.id);
+  }
+
+  @Put(':id')
+  @ApiOperation({
+    summary:
+      'Actualizar venta — recalcula saldo, ganancia y auto-cierra si abono >= precio (ADMIN)',
+  })
+  update(
+    @Param('id') id: string,
+    @Body() dto: UpdateVentaDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.ventasService.update(id, dto, user.id);
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary: 'Eliminar venta — revierte el descuento de inventario (ADMIN)',
+  })
+  remove(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.ventasService.remove(id, user.id);
+  }
+}

@@ -1,11 +1,17 @@
-// src/modules/meta-conversions/meta-conversions.module.ts
-// Módulo estándar de NestJS. Créalo tal cual.
-
 import { Module } from '@nestjs/common';
-import { MetaConversionsService } from './meta-conversions.service';
+import { ConversionTrackingService } from './application/conversion-tracking.service';
+import { CONVERSIONS_API } from './application/ports/conversions-api.port';
+import { ConversionTrackingSubscribers } from './infrastructure/events/conversion-tracking.subscribers';
+import { MetaConversionsClient } from './infrastructure/meta-conversions.client';
 
+// Contexto de medición de marketing: escucha compras y ventas y las reporta a
+// Meta por Conversions API. Nadie lo importa; solo reacciona a eventos.
 @Module({
-  providers: [MetaConversionsService],
-  exports: [MetaConversionsService],
+  providers: [
+    ConversionTrackingService,
+    ConversionTrackingSubscribers,
+    MetaConversionsClient,
+    { provide: CONVERSIONS_API, useExisting: MetaConversionsClient },
+  ],
 })
 export class MetaConversionsModule {}

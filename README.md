@@ -2,7 +2,7 @@
 
 Backend de producción del e-commerce **C3LECT** — relojería y perfumería de alta gama, Medellín, Colombia.
 
-API REST modular construida con NestJS, Prisma y PostgreSQL. Cubre el ciclo completo del negocio: catálogo, autenticación, pedidos, pagos con MercadoPago, inventario, costos y métricas financieras.
+API REST construida con NestJS, Prisma y PostgreSQL como **monolito modular con Clean Architecture**. Cubre el ciclo completo del negocio: catálogo, autenticación, pedidos, pagos con MercadoPago, inventario, costos y métricas financieras.
 
 📘 **Documentación interactiva (Swagger):** **https://c3lect-api.onrender.com/api/docs**
 *Alojada en el tier gratuito de Render — la primera petición puede tardar ~50 s en despertar la instancia.*
@@ -27,7 +27,31 @@ API REST modular construida con NestJS, Prisma y PostgreSQL. Cubre el ciclo comp
 
 ---
 
+## Arquitectura
+
+Cada carpeta de `src/modules/` es un **bounded context** (pedidos, pagos, inventario, catálogo…) con cuatro capas, y las dependencias solo apuntan hacia adentro:
+
+```
+modules/<contexto>/
+├── domain/           reglas del negocio · TypeScript puro, sin Nest ni Prisma
+├── application/      casos de uso · dependen de puertos (interfaces), no de implementaciones
+├── infrastructure/   controllers, repositorios Prisma, adaptadores a otros contextos
+└── public-api.ts     lo único que otros módulos pueden importar
+```
+
+- **Cada contexto es dueño de sus tablas.** Ningún módulo escribe en las tablas de otro.
+- **Consultas** entre contextos: por la fachada que cada uno expone en su `public-api.ts`.
+- **Efectos** entre contextos: por **eventos de dominio**. Al confirmar un pedido, orders publica `PedidoConfirmado`; inventario descuenta stock, ventas registra la venta y el catálogo oculta el producto si se agotó. Orders no sabe que esos módulos existen.
+- Las reglas se verifican en cada `pnpm test` con un test de arquitectura (`src/architecture.spec.ts`): un import que las rompa hace fallar la suite.
+
+Detalle completo (capas, dueños de tablas, mapa de eventos, cómo agregar funcionalidades): **[ARCHITECTURE.md](ARCHITECTURE.md)**.
+
+---
+
 ## Decisiones de diseño que vale la pena mirar
+
+**Confirmación atómica entre contextos.**
+El cambio de estado del pedido, el descuento de stock y el registro de ventas viven en tres módulos distintos, pero ocurren en **una sola transacción**: los repositorios toman la transacción en curso de un contexto ambiental (`AsyncLocalStorage`) y los handlers de eventos corren dentro de ella. Si no hay stock, no queda nada a medias. Los correos y el reporte a Meta se envían **solo después del commit**: nunca sale un correo de una operación revertida.
 
 **Pago pendiente antes que pedido.**
 `POST /payments/create-pending` cotiza el carrito y genera la preferencia de MercadoPago **sin crear el pedido**. El pedido solo nace —ya confirmado— cuando el webhook informa que el pago fue aprobado. Resultado: un checkout abandonado o rechazado no deja pedidos huérfanos ensuciando la base ni el inventario.
@@ -54,7 +78,9 @@ Toda mutación de producto o pedido queda registrada en `audit_log` con usuario,
 | Módulo | Ruta base | Qué hace |
 |---|---|---|
 | Auth | `/auth` | Registro, login, OTP por correo, refresh, reset de contraseña, logout |
+| Account | `/account` | Perfil y direcciones del cliente |
 | Products | `/products` | Catálogo público + CRUD admin con auditoría |
+| Promotions | `/promotions` | Promociones por producto, categoría o marca |
 | Orders | `/orders` | Checkout invitado y autenticado, estados, notificaciones |
 | Payments | `/payments` | Preferencias MercadoPago, webhook, estado de pago |
 | Inventario | `/inventario` | Inventario maestro, stock público, seed desde compras |
@@ -66,6 +92,8 @@ Toda mutación de producto o pedido queda registrada en `audit_log` con usuario,
 | Marcas | `/marcas` | Catálogo de marcas |
 | Users | `/users` | Gestión de usuarios |
 | Audit | `/audit` | Consulta del log de auditoría |
+| Notifications | — | Correos transaccionales, en reacción a eventos |
+| Meta Conversions | — | Compras reportadas a Meta (Conversions API), en reacción a eventos |
 
 ---
 
@@ -131,13 +159,14 @@ Toda mutación de producto o pedido queda registrada en `audit_log` con usuario,
 ```
 User ──< RefreshToken
      ──< PasswordReset
+     ──< Address
      ──< Order ──< OrderItem
                ──  ShippingInfo
                ──< OrderStatusHistory
                ──< Payment
                ──< HistoricalSale
 
-Product          OtpCode          AuditLog
+Product          Promotion        OtpCode          AuditLog
 InventarioMaestro    PrecioProducto    Purchase    Expense
 ```
 
@@ -160,6 +189,25 @@ pnpm start:dev                # http://localhost:3000
 
 Swagger local: `http://localhost:3000/api/docs`
 
+### Entorno de desarrollo aislado
+
+Para probar sin tocar la base ni los servicios de producción, usa una base local desechable y un archivo de entorno aparte. `.env.development.local` está en `.gitignore`.
+
+```bash
+# Postgres local en Docker (puerto 5433)
+docker run -d --name c3lect-dev-db -e POSTGRES_USER=c3lect -e POSTGRES_PASSWORD=c3lect \
+  -e POSTGRES_DB=c3lect_dev -p 5433:5432 postgres:16
+# Supabase trae el esquema `extensions`; en Postgres normal hay que crearlo
+docker exec c3lect-dev-db psql -U c3lect -d c3lect_dev -c "CREATE SCHEMA IF NOT EXISTS extensions;"
+
+# Variables de prueba: base local, MercadoPago TEST-…, Resend falso, Meta desactivado
+cp .env.development.example .env.development.local
+npx dotenv -e .env.development.local -- npx prisma migrate deploy
+npx dotenv -e .env.development.local -- npx nest start --watch
+```
+
+> Usa siempre el prefijo `npx dotenv -e .env.development.local --`. Sin él, la API carga `.env`. Antes de migrar, confirma que Prisma imprima `localhost:5433`.
+
 ### Variables de entorno
 
 | Variable | Para qué |
@@ -173,6 +221,8 @@ Swagger local: `http://localhost:3000/api/docs`
 | `API_URL` | URL pública de la API (callbacks) |
 | `RESEND_API_KEY` · `RESEND_FROM` · `ADMIN_EMAIL` | Envío de correo |
 | `MP_ACCESS_TOKEN` · `MP_WEBHOOK_SECRET` | Credenciales MercadoPago |
+| `META_PIXEL_ID` · `META_CAPI_ACCESS_TOKEN` | Conversions API de Meta (opcional; vacías la desactivan) |
+| `META_CAPI_TEST_EVENT_CODE` | Solo mientras se prueban eventos en Events Manager |
 
 ---
 
@@ -182,7 +232,7 @@ Swagger local: `http://localhost:3000/api/docs`
 pnpm start:dev     # desarrollo con recarga
 pnpm build         # compilar a dist/
 pnpm start:prod    # ejecutar build de producción
-pnpm test          # pruebas unitarias
+pnpm test          # pruebas unitarias + test de arquitectura + arranque del composition root
 pnpm lint          # eslint --fix
 pnpm format        # prettier
 ```

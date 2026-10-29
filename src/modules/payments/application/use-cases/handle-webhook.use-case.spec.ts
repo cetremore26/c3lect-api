@@ -1,6 +1,9 @@
-import { BadRequestException, Logger } from '@nestjs/common';
-import { EstadoPago, EstadoPedido } from '@prisma/client';
+import { Logger } from '@nestjs/common';
 import { createHmac } from 'crypto';
+import { BusinessRuleViolation } from '../../../../shared/domain/domain-error';
+import { fakeEventBus } from '../../../../shared/testing/fakes';
+import { PagoAprobado, PagoSinPedido } from '../../domain/payment-events';
+import { EstadoPago } from '../../domain/payment-status';
 import { HandleWebhookUseCase } from './handle-webhook.use-case';
 
 const WEBHOOK_SECRET = 'test-secret';
@@ -14,67 +17,96 @@ function firmarWebhook(dataId: string, requestId: string, ts = '1700000000') {
 }
 
 function webhookDto(id = 'mp-1') {
-  return { type: 'payment', data: { id } } as any;
+  return { type: 'payment', data: { id } };
 }
 
-function makeUseCase(envs: Record<string, string | undefined> = {}) {
-  const allEnvs = {
-    MP_WEBHOOK_SECRET: WEBHOOK_SECRET,
-    ADMIN_EMAIL: undefined,
-    ...envs,
+function makeUseCase({ sinSecreto = false } = {}) {
+  const secret = sinSecreto ? undefined : WEBHOOK_SECRET;
+  const orders = {
+    cotizar: jest.fn(),
+    nuevoNumeroDePedido: jest.fn(),
+    findForPayment: jest.fn(),
+    confirmarPorPago: jest.fn().mockResolvedValue(undefined),
+    cancelarPorPago: jest.fn().mockResolvedValue(undefined),
+    crearConfirmadoPorPago: jest.fn(),
   };
-
-  const mail = {
-    sendPaymentConfirmation: jest.fn().mockResolvedValue(undefined),
-    sendStockAlert: jest.fn().mockResolvedValue(undefined),
-  };
-  const config = {
-    getOrThrow: jest.fn((key: string) => {
-      const value = allEnvs[key];
-      if (value === undefined) throw new Error(`Falta config ${key}`);
-      return value;
-    }),
-    get: jest.fn((key: string) => allEnvs[key]),
-  };
-  const ordersService = {
-    createConfirmedOrder: jest.fn(),
-    updateStatus: jest.fn().mockResolvedValue(undefined),
-  };
-  const metaConversions = {
-    sendPurchase: jest.fn().mockResolvedValue(undefined),
-  };
-  const orderRepository = { findByIdForPayment: jest.fn() };
-  const gateway = { getPayment: jest.fn() };
+  const gateway = { createPreference: jest.fn(), getPayment: jest.fn() };
   const payments = {
+    create: jest.fn(),
+    findMostRecentByOrderId: jest.fn(),
     findMostRecentByOrderNumber: jest.fn(),
     markProcessedIfNotTerminal: jest.fn().mockResolvedValue(true),
     linkToOrder: jest.fn().mockResolvedValue(undefined),
   };
   const voucher = { generate: jest.fn().mockResolvedValue(Buffer.from('pdf')) };
+  const settings = {
+    webhookSecret: jest.fn(() => {
+      if (secret === undefined) throw new Error('Falta MP_WEBHOOK_SECRET');
+      return secret;
+    }),
+  };
+  const events = fakeEventBus();
 
   const useCase = new HandleWebhookUseCase(
-    mail as any,
-    config as any,
-    ordersService as any,
-    metaConversions as any,
-    orderRepository as any,
-    gateway as any,
-    payments as any,
-    voucher,
-  );
-
-  return {
-    useCase,
-    mail,
-    config,
-    ordersService,
-    metaConversions,
-    orderRepository,
+    orders,
     gateway,
     payments,
     voucher,
-  };
+    settings,
+    events,
+  );
+
+  return { useCase, orders, gateway, payments, voucher, events };
 }
+
+const shippingInfo = {
+  email: 'cliente@test.com',
+  nombreCompleto: 'Cliente Test',
+  telefono: '3000000000',
+  ciudad: 'Bogota',
+  departamento: 'Bogota',
+  direccion: 'Calle 1',
+};
+
+const existingPayment = {
+  id: 'payment-1',
+  orderId: null,
+  orderNumber: 'C3L-20260101-ABCDE',
+  draftPayload: {
+    itemsData: [
+      {
+        productId: 'prod-1',
+        nombre: 'Reloj',
+        precioUnitario: 50000,
+        cantidad: 1,
+        subtotal: 50000,
+      },
+    ],
+    subtotal: 50000,
+    total: 50000,
+    shippingInfo,
+    userId: null,
+    fbp: 'fb.p.1',
+    fbc: 'fb.c.1',
+  },
+};
+
+const pedidoCreado = {
+  id: 'order-9',
+  orderNumber: existingPayment.orderNumber,
+  pendiente: false,
+  total: 50000,
+  fbp: 'fb.p.1',
+  fbc: 'fb.c.1',
+  shippingInfo: {
+    email: 'cliente@test.com',
+    nombreCompleto: 'Cliente Test',
+    telefono: '3000000000',
+    ciudad: 'Bogota',
+    departamento: 'Bogota',
+  },
+  items: existingPayment.draftPayload.itemsData,
+};
 
 describe('HandleWebhookUseCase', () => {
   beforeEach(() => {
@@ -86,6 +118,21 @@ describe('HandleWebhookUseCase', () => {
   afterEach(() => {
     jest.restoreAllMocks();
   });
+
+  function aprobado(ctx: ReturnType<typeof makeUseCase>, payment: object) {
+    ctx.gateway.getPayment.mockResolvedValue({
+      status: 'approved',
+      externalReference: existingPayment.orderNumber,
+    });
+    ctx.payments.findMostRecentByOrderNumber.mockResolvedValue(payment);
+  }
+
+  const ejecutar = (ctx: ReturnType<typeof makeUseCase>) =>
+    ctx.useCase.execute(
+      webhookDto('mp-1'),
+      firmarWebhook('mp-1', 'req-1'),
+      'req-1',
+    );
 
   it('ignora notificaciones que no son de tipo payment', async () => {
     const { useCase, payments, gateway } = makeUseCase();
@@ -121,315 +168,148 @@ describe('HandleWebhookUseCase', () => {
   });
 
   it('rechaza el webhook si no puede verificar la firma (falta MP_WEBHOOK_SECRET)', async () => {
-    const { useCase, gateway } = makeUseCase({ MP_WEBHOOK_SECRET: undefined });
-    const signature = firmarWebhook('mp-1', 'req-1');
+    const ctx = makeUseCase({ sinSecreto: true });
 
-    await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+    await ejecutar(ctx);
 
-    expect(gateway.getPayment).not.toHaveBeenCalled();
+    expect(ctx.gateway.getPayment).not.toHaveBeenCalled();
   });
 
   it('ignora el pago si MercadoPago no manda external_reference', async () => {
-    const { useCase, gateway, payments } = makeUseCase();
-    gateway.getPayment.mockResolvedValue({
+    const ctx = makeUseCase();
+    ctx.gateway.getPayment.mockResolvedValue({
       status: 'approved',
       externalReference: null,
     });
-    const signature = firmarWebhook('mp-1', 'req-1');
 
-    await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+    await ejecutar(ctx);
 
-    expect(payments.findMostRecentByOrderNumber).not.toHaveBeenCalled();
+    expect(ctx.payments.findMostRecentByOrderNumber).not.toHaveBeenCalled();
   });
 
   it('ignora el pago si no hay un registro de Payment para ese orderNumber', async () => {
-    const { useCase, gateway, payments } = makeUseCase();
-    gateway.getPayment.mockResolvedValue({
-      status: 'approved',
-      externalReference: 'C3L-nope',
-    });
-    payments.findMostRecentByOrderNumber.mockResolvedValue(null);
-    const signature = firmarWebhook('mp-1', 'req-1');
+    const ctx = makeUseCase();
+    aprobado(ctx, null as never);
 
-    await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+    await ejecutar(ctx);
 
-    expect(payments.markProcessedIfNotTerminal).not.toHaveBeenCalled();
+    expect(ctx.payments.markProcessedIfNotTerminal).not.toHaveBeenCalled();
   });
 
-  const existingPayment = {
-    id: 'payment-1',
-    orderId: null,
-    orderNumber: 'C3L-20260101-ABCDE',
-    draftPayload: {
-      itemsData: [
-        {
-          productId: 'prod-1',
-          nombre: 'Reloj',
-          precioUnitario: 50000,
-          cantidad: 1,
-          subtotal: 50000,
-        },
-      ],
-      subtotal: 50000,
-      total: 50000,
-      shippingInfo: {
-        email: 'cliente@test.com',
-        nombreCompleto: 'Cliente Test',
-        telefono: '3000000000',
-        ciudad: 'Bogota',
-        departamento: 'Bogota',
-      },
-      userId: null,
-      fbp: 'fb.p.1',
-      fbc: 'fb.c.1',
-    },
-  };
-
   it('no reprocesa un webhook si otra entrega ya dejo el pago en estado terminal', async () => {
-    const { useCase, gateway, payments, ordersService, mail } = makeUseCase();
-    gateway.getPayment.mockResolvedValue({
-      status: 'approved',
-      externalReference: existingPayment.orderNumber,
-    });
-    payments.findMostRecentByOrderNumber.mockResolvedValue(existingPayment);
-    payments.markProcessedIfNotTerminal.mockResolvedValue(false);
-    const signature = firmarWebhook('mp-1', 'req-1');
+    const ctx = makeUseCase();
+    aprobado(ctx, existingPayment);
+    ctx.payments.markProcessedIfNotTerminal.mockResolvedValue(false);
 
-    await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+    await ejecutar(ctx);
 
-    expect(ordersService.createConfirmedOrder).not.toHaveBeenCalled();
-    expect(mail.sendPaymentConfirmation).not.toHaveBeenCalled();
+    expect(ctx.orders.crearConfirmadoPorPago).not.toHaveBeenCalled();
+    expect(ctx.events.publish).not.toHaveBeenCalled();
   });
 
   it('un pago pending no dispara confirmacion ni cancelacion de pedido', async () => {
-    const { useCase, gateway, payments, ordersService } = makeUseCase();
-    gateway.getPayment.mockResolvedValue({
+    const ctx = makeUseCase();
+    ctx.gateway.getPayment.mockResolvedValue({
       status: 'pending',
       externalReference: existingPayment.orderNumber,
     });
-    payments.findMostRecentByOrderNumber.mockResolvedValue(existingPayment);
-    const signature = firmarWebhook('mp-1', 'req-1');
+    ctx.payments.findMostRecentByOrderNumber.mockResolvedValue(existingPayment);
 
-    await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+    await ejecutar(ctx);
 
-    expect(payments.markProcessedIfNotTerminal).toHaveBeenCalledWith({
+    expect(ctx.payments.markProcessedIfNotTerminal).toHaveBeenCalledWith({
       paymentId: 'payment-1',
       nuevoEstado: EstadoPago.PENDIENTE,
       mpPaymentId: 'mp-1',
     });
-    expect(ordersService.createConfirmedOrder).not.toHaveBeenCalled();
-    expect(ordersService.updateStatus).not.toHaveBeenCalled();
+    expect(ctx.orders.crearConfirmadoPorPago).not.toHaveBeenCalled();
+    expect(ctx.orders.confirmarPorPago).not.toHaveBeenCalled();
+    expect(ctx.orders.cancelarPorPago).not.toHaveBeenCalled();
   });
 
   describe('pago aprobado, flujo nuevo (sin orderId)', () => {
     it('crea el pedido confirmado a partir del draftPayload y enlaza el pago', async () => {
-      const { useCase, gateway, payments, ordersService, mail } = makeUseCase();
-      gateway.getPayment.mockResolvedValue({
-        status: 'approved',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue(existingPayment);
-      const ordenCreada = {
-        id: 'order-9',
-        orderNumber: existingPayment.orderNumber,
-        total: 50000,
-        fbp: 'fb.p.1',
-        fbc: 'fb.c.1',
-        shippingInfo: existingPayment.draftPayload.shippingInfo,
-        items: existingPayment.draftPayload.itemsData,
-      };
-      ordersService.createConfirmedOrder.mockResolvedValue(ordenCreada);
-      const signature = firmarWebhook('mp-1', 'req-1');
+      const ctx = makeUseCase();
+      aprobado(ctx, existingPayment);
+      ctx.orders.crearConfirmadoPorPago.mockResolvedValue(pedidoCreado);
 
-      await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+      await ejecutar(ctx);
 
-      expect(ordersService.createConfirmedOrder).toHaveBeenCalledWith({
+      expect(ctx.orders.crearConfirmadoPorPago).toHaveBeenCalledWith({
         orderNumber: existingPayment.orderNumber,
         itemsData: existingPayment.draftPayload.itemsData,
         subtotal: existingPayment.draftPayload.subtotal,
         total: existingPayment.draftPayload.total,
-        shippingInfo: existingPayment.draftPayload.shippingInfo,
+        shippingInfo,
         userId: null,
         fbp: 'fb.p.1',
         fbc: 'fb.c.1',
       });
-      expect(payments.linkToOrder).toHaveBeenCalledWith('payment-1', 'order-9');
-      expect(mail.sendPaymentConfirmation).toHaveBeenCalledWith(
-        'cliente@test.com',
-        'Cliente Test',
-        existingPayment.orderNumber,
-        50000,
-        expect.any(Buffer),
+      expect(ctx.payments.linkToOrder).toHaveBeenCalledWith(
+        'payment-1',
+        'order-9',
       );
-      expect(mail.sendPaymentConfirmation).toHaveBeenCalledTimes(1); // sin ADMIN_EMAIL configurado
     });
 
-    it('tambien envia el comprobante al admin cuando ADMIN_EMAIL esta configurado', async () => {
-      const { useCase, gateway, payments, ordersService, mail } = makeUseCase({
-        ADMIN_EMAIL: 'admin@c3lect.com',
-      });
-      gateway.getPayment.mockResolvedValue({
-        status: 'approved',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue(existingPayment);
-      ordersService.createConfirmedOrder.mockResolvedValue({
-        id: 'order-9',
+    it('publica PagoAprobado con el comprobante, los datos del cliente y las cookies del pedido', async () => {
+      const ctx = makeUseCase();
+      aprobado(ctx, existingPayment);
+      ctx.orders.crearConfirmadoPorPago.mockResolvedValue(pedidoCreado);
+
+      await ejecutar(ctx);
+
+      expect(ctx.voucher.generate).toHaveBeenCalledWith(pedidoCreado);
+      expect(ctx.events.of(PagoAprobado)[0].pago).toEqual({
         orderNumber: existingPayment.orderNumber,
         total: 50000,
+        lineas: existingPayment.draftPayload.itemsData,
+        cliente: pedidoCreado.shippingInfo,
         fbp: 'fb.p.1',
         fbc: 'fb.c.1',
-        shippingInfo: existingPayment.draftPayload.shippingInfo,
-        items: existingPayment.draftPayload.itemsData,
+        comprobantePdf: expect.any(Buffer),
       });
-      const signature = firmarWebhook('mp-1', 'req-1');
-
-      await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
-
-      expect(mail.sendPaymentConfirmation).toHaveBeenCalledTimes(2);
-      expect(mail.sendPaymentConfirmation).toHaveBeenCalledWith(
-        'admin@c3lect.com',
-        'Admin',
-        existingPayment.orderNumber,
-        50000,
-        expect.any(Buffer),
-      );
     });
 
-    it('envia el Purchase a Conversions API con los datos del cliente y las cookies del pedido', async () => {
-      const { useCase, gateway, payments, ordersService, metaConversions } =
-        makeUseCase();
-      gateway.getPayment.mockResolvedValue({
-        status: 'approved',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue(existingPayment);
-      ordersService.createConfirmedOrder.mockResolvedValue({
-        id: 'order-9',
+    it('si falta el draftPayload, no crea el pedido ni publica nada', async () => {
+      const ctx = makeUseCase();
+      aprobado(ctx, { ...existingPayment, draftPayload: null });
+
+      await ejecutar(ctx);
+
+      expect(ctx.orders.crearConfirmadoPorPago).not.toHaveBeenCalled();
+      expect(ctx.events.publish).not.toHaveBeenCalled();
+    });
+
+    it('si no hay stock para crear el pedido, publica PagoSinPedido y no lanza', async () => {
+      const ctx = makeUseCase();
+      aprobado(ctx, existingPayment);
+      ctx.orders.crearConfirmadoPorPago.mockRejectedValue(
+        new BusinessRuleViolation('Stock insuficiente'),
+      );
+
+      await expect(ejecutar(ctx)).resolves.toBeUndefined();
+
+      expect(ctx.events.of(PagoSinPedido)[0].incidente).toEqual({
         orderNumber: existingPayment.orderNumber,
-        total: 50000,
-        fbp: 'fb.p.1',
-        fbc: 'fb.c.1',
-        shippingInfo: existingPayment.draftPayload.shippingInfo,
-        items: existingPayment.draftPayload.itemsData,
+        detalle: 'Stock insuficiente',
       });
-      const signature = firmarWebhook('mp-1', 'req-1');
-
-      await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
-
-      expect(metaConversions.sendPurchase).toHaveBeenCalledWith({
-        orderNumber: existingPayment.orderNumber,
-        total: 50000,
-        contentIds: ['prod-1'],
-        user: {
-          email: 'cliente@test.com',
-          phone: '3000000000',
-          firstName: 'Cliente',
-          lastName: 'Test',
-          city: 'Bogota',
-          state: 'Bogota',
-          fbp: 'fb.p.1',
-          fbc: 'fb.c.1',
-        },
-      });
+      expect(ctx.events.of(PagoAprobado)).toHaveLength(0);
+      expect(ctx.payments.linkToOrder).not.toHaveBeenCalled();
     });
 
-    it('si falta el draftPayload, no crea el pedido y registra el error', async () => {
-      const { useCase, gateway, payments, ordersService, mail } = makeUseCase();
-      gateway.getPayment.mockResolvedValue({
-        status: 'approved',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue({
-        ...existingPayment,
-        draftPayload: null,
-      });
-      const signature = firmarWebhook('mp-1', 'req-1');
-
-      await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
-
-      expect(ordersService.createConfirmedOrder).not.toHaveBeenCalled();
-      expect(mail.sendPaymentConfirmation).not.toHaveBeenCalled();
-    });
-
-    it('si no hay stock para crear el pedido, avisa al admin y no lanza', async () => {
-      const { useCase, gateway, payments, ordersService, mail } = makeUseCase({
-        ADMIN_EMAIL: 'admin@c3lect.com',
-      });
-      gateway.getPayment.mockResolvedValue({
-        status: 'approved',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue(existingPayment);
-      ordersService.createConfirmedOrder.mockRejectedValue(
-        new BadRequestException('Stock insuficiente'),
-      );
-      const signature = firmarWebhook('mp-1', 'req-1');
-
-      await expect(
-        useCase.execute(webhookDto('mp-1'), signature, 'req-1'),
-      ).resolves.toBeUndefined();
-
-      expect(mail.sendStockAlert).toHaveBeenCalledWith(
-        'admin@c3lect.com',
-        existingPayment.orderNumber,
-        expect.any(String),
-      );
-      expect(payments.linkToOrder).not.toHaveBeenCalled();
-    });
-
-    it('si no hay stock y no hay ADMIN_EMAIL configurado, no intenta avisar a nadie', async () => {
-      const { useCase, gateway, payments, ordersService, mail } = makeUseCase();
-      gateway.getPayment.mockResolvedValue({
-        status: 'approved',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue(existingPayment);
-      ordersService.createConfirmedOrder.mockRejectedValue(
-        new BadRequestException('Stock insuficiente'),
-      );
-      const signature = firmarWebhook('mp-1', 'req-1');
-
-      await expect(
-        useCase.execute(webhookDto('mp-1'), signature, 'req-1'),
-      ).resolves.toBeUndefined();
-
-      expect(mail.sendStockAlert).not.toHaveBeenCalled();
-    });
-
-    it('no envia comprobante al cliente si el pedido quedo sin shippingInfo', async () => {
-      const {
-        useCase,
-        gateway,
-        payments,
-        ordersService,
-        mail,
-        metaConversions,
-      } = makeUseCase();
-      gateway.getPayment.mockResolvedValue({
-        status: 'approved',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue(existingPayment);
-      ordersService.createConfirmedOrder.mockResolvedValue({
-        id: 'order-9',
-        orderNumber: existingPayment.orderNumber,
-        total: 50000,
+    it('si el pedido quedo sin shippingInfo, publica PagoAprobado sin cliente', async () => {
+      const ctx = makeUseCase();
+      aprobado(ctx, existingPayment);
+      ctx.orders.crearConfirmadoPorPago.mockResolvedValue({
+        ...pedidoCreado,
         fbp: null,
         fbc: null,
         shippingInfo: null,
-        items: existingPayment.draftPayload.itemsData,
       });
-      const signature = firmarWebhook('mp-1', 'req-1');
 
-      await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+      await ejecutar(ctx);
 
-      expect(mail.sendPaymentConfirmation).not.toHaveBeenCalled();
-      expect(metaConversions.sendPurchase).toHaveBeenCalledWith(
-        expect.objectContaining({
-          user: expect.objectContaining({ email: undefined }),
-        }),
-      );
+      expect(ctx.events.of(PagoAprobado)[0].pago.cliente).toBeNull();
     });
   });
 
@@ -440,173 +320,107 @@ describe('HandleWebhookUseCase', () => {
       draftPayload: null,
     };
     const ordenExistente = {
+      ...pedidoCreado,
       id: 'order-5',
-      orderNumber: existingPayment.orderNumber,
-      status: EstadoPedido.PENDIENTE,
+      pendiente: true,
       total: 80000,
-      fbp: null,
-      fbc: null,
-      shippingInfo: {
-        email: 'legacy@test.com',
-        nombreCompleto: 'Legacy Cliente',
-        telefono: '3001234567',
-        ciudad: 'Cali',
-        departamento: 'Valle',
-      },
-      items: [
-        {
-          productId: 'prod-2',
-          nombre: 'Correa',
-          cantidad: 1,
-          precioUnitario: 80000,
-          subtotal: 80000,
-        },
-      ],
     };
 
-    it('confirma el pedido existente sin duplicar el email de estado', async () => {
-      const { useCase, gateway, payments, orderRepository, ordersService } =
-        makeUseCase();
-      gateway.getPayment.mockResolvedValue({
-        status: 'approved',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue(paymentConOrder);
-      orderRepository.findByIdForPayment.mockResolvedValue(ordenExistente);
-      const signature = firmarWebhook('mp-1', 'req-1');
+    it('confirma el pedido existente (sin email de estado: va el comprobante)', async () => {
+      const ctx = makeUseCase();
+      aprobado(ctx, paymentConOrder);
+      ctx.orders.findForPayment.mockResolvedValue(ordenExistente);
 
-      await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+      await ejecutar(ctx);
 
-      expect(ordersService.updateStatus).toHaveBeenCalledWith(
-        'order-5',
-        { status: EstadoPedido.CONFIRMADO },
-        'MERCADOPAGO',
-        true,
-      );
-      expect(ordersService.createConfirmedOrder).not.toHaveBeenCalled();
+      expect(ctx.orders.confirmarPorPago).toHaveBeenCalledWith('order-5');
+      expect(ctx.orders.crearConfirmadoPorPago).not.toHaveBeenCalled();
+      expect(ctx.events.of(PagoAprobado)[0].pago.total).toBe(80000);
     });
 
     it('no hace nada si el pedido legado ya no esta PENDIENTE', async () => {
-      const { useCase, gateway, payments, orderRepository, ordersService } =
-        makeUseCase();
-      gateway.getPayment.mockResolvedValue({
-        status: 'approved',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue(paymentConOrder);
-      orderRepository.findByIdForPayment.mockResolvedValue({
+      const ctx = makeUseCase();
+      aprobado(ctx, paymentConOrder);
+      ctx.orders.findForPayment.mockResolvedValue({
         ...ordenExistente,
-        status: EstadoPedido.CANCELADO,
+        pendiente: false,
       });
-      const signature = firmarWebhook('mp-1', 'req-1');
 
-      await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+      await ejecutar(ctx);
 
-      expect(ordersService.updateStatus).not.toHaveBeenCalled();
+      expect(ctx.orders.confirmarPorPago).not.toHaveBeenCalled();
+      expect(ctx.events.publish).not.toHaveBeenCalled();
     });
 
-    it('si no puede confirmar el pedido legado, avisa al admin y no envia comprobante', async () => {
-      const {
-        useCase,
-        gateway,
-        payments,
-        orderRepository,
-        ordersService,
-        mail,
-      } = makeUseCase({
-        ADMIN_EMAIL: 'admin@c3lect.com',
-      });
-      gateway.getPayment.mockResolvedValue({
-        status: 'approved',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue(paymentConOrder);
-      orderRepository.findByIdForPayment.mockResolvedValue(ordenExistente);
-      ordersService.updateStatus.mockRejectedValue(new Error('DB caida'));
-      const signature = firmarWebhook('mp-1', 'req-1');
+    it('si no puede confirmar el pedido legado, publica PagoSinPedido y no el comprobante', async () => {
+      const ctx = makeUseCase();
+      aprobado(ctx, paymentConOrder);
+      ctx.orders.findForPayment.mockResolvedValue(ordenExistente);
+      ctx.orders.confirmarPorPago.mockRejectedValue(new Error('DB caida'));
 
-      await expect(
-        useCase.execute(webhookDto('mp-1'), signature, 'req-1'),
-      ).resolves.toBeUndefined();
+      await expect(ejecutar(ctx)).resolves.toBeUndefined();
 
-      expect(mail.sendStockAlert).toHaveBeenCalledWith(
-        'admin@c3lect.com',
-        existingPayment.orderNumber,
-        'DB caida',
-      );
+      expect(ctx.events.of(PagoSinPedido)[0].incidente).toEqual({
+        orderNumber: existingPayment.orderNumber,
+        detalle: 'DB caida',
+      });
+      expect(ctx.events.of(PagoAprobado)).toHaveLength(0);
     });
   });
 
   describe('pago rechazado o cancelado', () => {
-    it('cancela el pedido legado si estaba PENDIENTE', async () => {
-      const { useCase, gateway, payments, orderRepository, ordersService } =
-        makeUseCase();
-      gateway.getPayment.mockResolvedValue({
+    function rechazado(ctx: ReturnType<typeof makeUseCase>, payment: object) {
+      ctx.gateway.getPayment.mockResolvedValue({
         status: 'rejected',
         externalReference: existingPayment.orderNumber,
       });
-      payments.findMostRecentByOrderNumber.mockResolvedValue({
-        ...existingPayment,
-        orderId: 'order-5',
-      });
-      orderRepository.findByIdForPayment.mockResolvedValue({
+      ctx.payments.findMostRecentByOrderNumber.mockResolvedValue(payment);
+    }
+
+    it('cancela el pedido legado si estaba PENDIENTE', async () => {
+      const ctx = makeUseCase();
+      rechazado(ctx, { ...existingPayment, orderId: 'order-5' });
+      ctx.orders.findForPayment.mockResolvedValue({
         id: 'order-5',
-        status: EstadoPedido.PENDIENTE,
+        pendiente: true,
       });
-      const signature = firmarWebhook('mp-1', 'req-1');
 
-      await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+      await ejecutar(ctx);
 
-      expect(ordersService.updateStatus).toHaveBeenCalledWith(
-        'order-5',
-        { status: EstadoPedido.CANCELADO },
-        'MERCADOPAGO',
-      );
+      expect(ctx.orders.cancelarPorPago).toHaveBeenCalledWith('order-5');
     });
 
     it('no hace nada si el pago rechazado nunca tuvo un pedido asociado (flujo nuevo)', async () => {
-      const { useCase, gateway, payments, orderRepository, ordersService } =
-        makeUseCase();
-      gateway.getPayment.mockResolvedValue({
+      const ctx = makeUseCase();
+      ctx.gateway.getPayment.mockResolvedValue({
         status: 'cancelled',
         externalReference: existingPayment.orderNumber,
       });
-      payments.findMostRecentByOrderNumber.mockResolvedValue(existingPayment);
-      const signature = firmarWebhook('mp-1', 'req-1');
+      ctx.payments.findMostRecentByOrderNumber.mockResolvedValue(
+        existingPayment,
+      );
 
-      await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+      await ejecutar(ctx);
 
-      expect(ordersService.updateStatus).not.toHaveBeenCalled();
-      expect(orderRepository.findByIdForPayment).not.toHaveBeenCalled();
+      expect(ctx.orders.cancelarPorPago).not.toHaveBeenCalled();
+      expect(ctx.orders.findForPayment).not.toHaveBeenCalled();
     });
 
     it('no hace nada si el pedido legado del pago rechazado ya no existe', async () => {
-      const { useCase, gateway, payments, orderRepository, ordersService } =
-        makeUseCase();
-      gateway.getPayment.mockResolvedValue({
-        status: 'rejected',
-        externalReference: existingPayment.orderNumber,
-      });
-      payments.findMostRecentByOrderNumber.mockResolvedValue({
-        ...existingPayment,
-        orderId: 'order-5',
-      });
-      orderRepository.findByIdForPayment.mockResolvedValue(null);
-      const signature = firmarWebhook('mp-1', 'req-1');
+      const ctx = makeUseCase();
+      rechazado(ctx, { ...existingPayment, orderId: 'order-5' });
+      ctx.orders.findForPayment.mockResolvedValue(null);
 
-      await useCase.execute(webhookDto('mp-1'), signature, 'req-1');
+      await ejecutar(ctx);
 
-      expect(ordersService.updateStatus).not.toHaveBeenCalled();
+      expect(ctx.orders.cancelarPorPago).not.toHaveBeenCalled();
     });
   });
 
   it('atrapa errores inesperados al consultar el pago en MercadoPago y no los propaga', async () => {
-    const { useCase, gateway } = makeUseCase();
-    gateway.getPayment.mockRejectedValue(new Error('timeout MercadoPago'));
-    const signature = firmarWebhook('mp-1', 'req-1');
+    const ctx = makeUseCase();
+    ctx.gateway.getPayment.mockRejectedValue(new Error('timeout MercadoPago'));
 
-    await expect(
-      useCase.execute(webhookDto('mp-1'), signature, 'req-1'),
-    ).resolves.toBeUndefined();
+    await expect(ejecutar(ctx)).resolves.toBeUndefined();
   });
 });
