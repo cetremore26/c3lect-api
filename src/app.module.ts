@@ -3,11 +3,11 @@ import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD, APP_FILTER } from '@nestjs/core';
 import { AppController } from './app.controller';
-import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
+import { GlobalExceptionFilter } from './shared/infrastructure/http/filters/global-exception.filter';
 import { validate } from './config/environment';
-import { PrismaModule } from './prisma/prisma.module';
+import { SharedKernelModule } from './shared/shared-kernel.module';
 import { ProductsModule } from './modules/products/products.module';
-import { AuthModule } from './auth/auth.module';
+import { AuthModule } from './modules/auth/auth.module';
 import { OrdersModule } from './modules/orders/orders.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { AuditModule } from './modules/audit/audit.module';
@@ -22,6 +22,7 @@ import { PreciosModule } from './modules/precios/precios.module';
 import { MarcasModule } from './modules/marcas/marcas.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { MetaConversionsModule } from './modules/meta-conversions/meta-conversions.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -36,7 +37,7 @@ import { MetaConversionsModule } from './modules/meta-conversions/meta-conversio
         { name: 'auth', ttl: 60000, limit: 8 },
       ],
     }),
-    PrismaModule,
+    SharedKernelModule,
     ProductsModule,
     AuthModule,
     OrdersModule,
@@ -53,6 +54,7 @@ import { MetaConversionsModule } from './modules/meta-conversions/meta-conversio
     MarcasModule,
     PromotionsModule,
     MetaConversionsModule,
+    NotificationsModule,
   ],
   controllers: [AppController],
   providers: [

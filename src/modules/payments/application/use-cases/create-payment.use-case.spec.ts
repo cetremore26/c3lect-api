@@ -1,13 +1,15 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { EstadoPedido } from '@prisma/client';
+import {
+  BusinessRuleViolation,
+  NotFoundError,
+} from '../../../../shared/domain/domain-error';
 import { CreatePaymentUseCase } from './create-payment.use-case';
 
 // Fakes en memoria de los 3 ports — sin jest.mock('mercadopago', ...) a
 // nivel de modulo y sin mockear Prisma: exactamente el salto de calidad que
 // motivo este refactor (ver plan de payments).
 function makeUseCase(order: Record<string, unknown> | null) {
-  const orderRepository = {
-    findByIdForPayment: jest.fn().mockResolvedValue(order),
+  const orders = {
+    findForPayment: jest.fn().mockResolvedValue(order),
   };
   const gateway = {
     createPreference: jest.fn().mockResolvedValue({
@@ -20,17 +22,17 @@ function makeUseCase(order: Record<string, unknown> | null) {
   };
 
   const useCase = new CreatePaymentUseCase(
-    orderRepository as any,
+    orders as any,
     gateway as any,
     payments as any,
   );
-  return { useCase, orderRepository, gateway, payments };
+  return { useCase, orders, gateway, payments };
 }
 
 const orderBase = {
   id: 'order-1',
   orderNumber: 'C3L-20260101-ABCDE',
-  status: EstadoPedido.PENDIENTE,
+  pendiente: true,
   total: 150000,
   items: [
     {
@@ -44,23 +46,23 @@ const orderBase = {
 };
 
 describe('CreatePaymentUseCase', () => {
-  it('lanza NotFoundException si el pedido no existe', async () => {
+  it('lanza NotFoundError si el pedido no existe', async () => {
     const { useCase, gateway } = makeUseCase(null);
 
     await expect(useCase.execute({ orderId: 'nope' })).rejects.toThrow(
-      NotFoundException,
+      NotFoundError,
     );
     expect(gateway.createPreference).not.toHaveBeenCalled();
   });
 
-  it('lanza BadRequestException si el pedido ya no esta PENDIENTE', async () => {
+  it('lanza BusinessRuleViolation si el pedido ya no esta PENDIENTE', async () => {
     const { useCase, gateway } = makeUseCase({
       ...orderBase,
-      status: EstadoPedido.CONFIRMADO,
+      pendiente: false,
     });
 
     await expect(useCase.execute({ orderId: 'order-1' })).rejects.toThrow(
-      BadRequestException,
+      BusinessRuleViolation,
     );
     expect(gateway.createPreference).not.toHaveBeenCalled();
   });

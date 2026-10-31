@@ -1,13 +1,17 @@
 import { Module } from '@nestjs/common';
-import { PromotionsController } from './promotions.controller';
-import { PromotionsService } from './promotions.service';
-import { PromotionsRepository } from './promotions.repository';
-import { AuditModule } from '../audit/audit.module';
+import { PROMOTIONS_REPOSITORY } from './application/ports/promotions-repository.port';
+import { PromotionsFacade } from './application/promotions.facade';
+import { PromotionsService } from './application/promotions.service';
+import { PromotionsController } from './infrastructure/http/promotions.controller';
+import { PromotionsRepository } from './infrastructure/persistence/promotions.repository';
 
 @Module({
-  imports: [AuditModule],
   controllers: [PromotionsController],
-  providers: [PromotionsService, PromotionsRepository],
-  exports: [PromotionsService],
+  providers: [
+    PromotionsService,
+    PromotionsFacade,
+    { provide: PROMOTIONS_REPOSITORY, useClass: PromotionsRepository },
+  ],
+  exports: [PromotionsFacade],
 })
 export class PromotionsModule {}

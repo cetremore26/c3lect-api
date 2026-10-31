@@ -1,4 +1,4 @@
-import { EstadoPago } from '@prisma/client';
+import { EstadoPago } from './payment-status';
 
 const MP_STATUS_MAP: Record<string, EstadoPago> = {
   approved: EstadoPago.APROBADO,

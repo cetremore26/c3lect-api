@@ -1,13 +1,11 @@
+import { Inject, Injectable } from '@nestjs/common';
 import {
-  BadRequestException,
-  Inject,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
-import { EstadoPago, EstadoPedido } from '@prisma/client';
-import { ORDER_REPOSITORY } from '../../../orders/application/ports/order-repository.port';
-import type { OrderRepositoryPort } from '../../../orders/application/ports/order-repository.port';
-import { CreatePaymentDto } from '../../dto/create-payment.dto';
+  BusinessRuleViolation,
+  NotFoundError,
+} from '../../../../shared/domain/domain-error';
+import { EstadoPago } from '../../domain/payment-status';
+import { ORDERS } from '../ports/orders.port';
+import type { OrdersPort } from '../ports/orders.port';
 import { PAYMENT_GATEWAY } from '../ports/payment-gateway.port';
 import type { PaymentGatewayPort } from '../ports/payment-gateway.port';
 import { PAYMENT_REPOSITORY } from '../ports/payment-repository.port';
@@ -16,19 +14,18 @@ import type { PaymentRepositoryPort } from '../ports/payment-repository.port';
 @Injectable()
 export class CreatePaymentUseCase {
   constructor(
-    @Inject(ORDER_REPOSITORY)
-    private readonly orderRepository: OrderRepositoryPort,
+    @Inject(ORDERS) private readonly orders: OrdersPort,
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGatewayPort,
     @Inject(PAYMENT_REPOSITORY)
     private readonly payments: PaymentRepositoryPort,
   ) {}
 
-  async execute(dto: CreatePaymentDto, userId?: string) {
-    const order = await this.orderRepository.findByIdForPayment(dto.orderId);
-    if (!order) throw new NotFoundException('Pedido no encontrado.');
-    if (order.status !== EstadoPedido.PENDIENTE) {
-      throw new BadRequestException(
-        `El pedido está en estado ${order.status} y no puede procesarse.',`,
+  async execute(cmd: { orderId: string }, userId?: string) {
+    const order = await this.orders.findForPayment(cmd.orderId);
+    if (!order) throw new NotFoundError('Pedido no encontrado.');
+    if (!order.pendiente) {
+      throw new BusinessRuleViolation(
+        'El pedido ya no está pendiente y no puede procesarse.',
       );
     }
 

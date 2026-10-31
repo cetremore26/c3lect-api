@@ -1,8 +1,9 @@
 import { CreatePendingOrderPaymentUseCase } from './create-pending-order-payment.use-case';
 
 function makeUseCase(resolved: Record<string, unknown>) {
-  const ordersService = {
-    resolveItems: jest.fn().mockResolvedValue(resolved),
+  const orders = {
+    cotizar: jest.fn().mockResolvedValue(resolved),
+    nuevoNumeroDePedido: jest.fn().mockReturnValue('C3L-20260101-ABCDE'),
   };
   const gateway = {
     createPreference: jest.fn().mockResolvedValue({
@@ -15,11 +16,11 @@ function makeUseCase(resolved: Record<string, unknown>) {
   };
 
   const useCase = new CreatePendingOrderPaymentUseCase(
-    ordersService as any,
+    orders as any,
     gateway as any,
     payments as any,
   );
-  return { useCase, ordersService, gateway, payments };
+  return { useCase, orders, gateway, payments };
 }
 
 const dto = {
@@ -52,19 +53,19 @@ const resolved = {
 
 describe('CreatePendingOrderPaymentUseCase', () => {
   it('resuelve los items server-side marcando al usuario como autenticado si hay userId', async () => {
-    const { useCase, ordersService } = makeUseCase(resolved);
+    const { useCase, orders } = makeUseCase(resolved);
 
     await useCase.execute(dto, 'user-1');
 
-    expect(ordersService.resolveItems).toHaveBeenCalledWith(dto.items, true);
+    expect(orders.cotizar).toHaveBeenCalledWith(dto.items, true);
   });
 
   it('trata al comprador como invitado si no hay userId', async () => {
-    const { useCase, ordersService } = makeUseCase(resolved);
+    const { useCase, orders } = makeUseCase(resolved);
 
     await useCase.execute(dto);
 
-    expect(ordersService.resolveItems).toHaveBeenCalledWith(dto.items, false);
+    expect(orders.cotizar).toHaveBeenCalledWith(dto.items, false);
   });
 
   it('crea el pago sin orderId y con el draftPayload congelado', async () => {
