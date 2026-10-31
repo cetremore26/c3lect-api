@@ -1,9 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { MailService } from '../../../../mail/mail.service';
-import { MetaConversionsService } from '../../../meta-conversions/meta-conversions.service';
+import { EVENT_BUS } from '../../../../shared/application/ports/event-bus.port';
+import type { EventBusPort } from '../../../../shared/application/ports/event-bus.port';
+import { PedidoCreado } from '../../domain/order-events';
 import { buildOrderNumber } from '../../domain/order-number';
-import { CreateOrderDto } from '../../dto/create-order.dto';
+import { CreateOrderCommand } from '../commands';
 import { ORDER_REPOSITORY } from '../ports/order-repository.port';
 import type { OrderRepositoryPort } from '../ports/order-repository.port';
 import { ResolveOrderItemsUseCase } from './resolve-order-items.use-case';
@@ -13,70 +13,55 @@ export class CreateOrderUseCase {
   constructor(
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepositoryPort,
     private readonly resolveOrderItems: ResolveOrderItemsUseCase,
-    private readonly mail: MailService,
-    private readonly config: ConfigService,
-    private readonly metaConversions: MetaConversionsService,
+    @Inject(EVENT_BUS) private readonly events: EventBusPort,
   ) {}
 
-  async execute(dto: CreateOrderDto, userId?: string) {
+  // Checkout directo (contraentrega / transferencia): el pedido nace
+  // PENDIENTE. Los correos al cliente y al admin, y el Purchase de Meta, los
+  // disparan los módulos que escuchan PedidoCreado — este caso de uso no
+  // sabe que existen.
+  async execute(cmd: CreateOrderCommand, userId?: string) {
     const { itemsData, subtotal, total } = await this.resolveOrderItems.execute(
-      dto.items,
+      cmd.items,
       !!userId,
     );
-    const orderNumber = buildOrderNumber();
 
     const order = await this.orders.create({
-      orderNumber,
+      orderNumber: buildOrderNumber(),
       userId: userId ?? null,
       subtotal,
       total,
-      paymentMethod: dto.metodoPago,
-      fbp: dto.fbp ?? null,
-      fbc: dto.fbc ?? null,
+      paymentMethod: cmd.metodoPago,
+      fbp: cmd.fbp ?? null,
+      fbc: cmd.fbc ?? null,
       items: itemsData,
-      shippingInfo: dto.shippingInfo,
+      shippingInfo: cmd.shippingInfo,
     });
 
-    const nombreCliente = dto.shippingInfo.nombreCompleto;
-
-    void this.mail.sendOrderConfirmation(
-      dto.shippingInfo.email,
-      nombreCliente,
-      order.orderNumber,
-      order.items,
-      order.total,
-    );
-
-    const adminEmail = this.config.get<string>('ADMIN_EMAIL');
-    if (adminEmail) {
-      void this.mail.sendNewOrderAdmin(
-        adminEmail,
-        order.orderNumber,
-        nombreCliente,
-        order.total,
-        order.items,
-      );
-    }
-
-    // Purchase por Conversions API para los pedidos que NO pasan por
-    // MercadoPago (contraentrega y transferencia). Estos nunca llegan al
-    // webhook de payments, así que sin este envío Meta no se entera de ellos.
-    // Va con `void` como los correos: el pedido no debe esperar a Meta.
-    void this.metaConversions.sendPurchase({
-      orderNumber: order.orderNumber,
-      total: order.total,
-      contentIds: order.items.map((i) => i.productId),
-      user: {
-        email: dto.shippingInfo.email,
-        phone: dto.shippingInfo.telefono,
-        firstName: nombreCliente.trim().split(' ')[0],
-        lastName: nombreCliente.trim().split(' ').slice(1).join(' '),
-        city: dto.shippingInfo.ciudad,
-        state: dto.shippingInfo.departamento,
+    await this.events.publish(
+      new PedidoCreado({
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        total: order.total,
+        metodoPago: order.paymentMethod,
+        lineas: order.items.map((i) => ({
+          productId: i.productId,
+          nombre: i.nombre,
+          cantidad: i.cantidad,
+          precioUnitario: i.precioUnitario,
+          subtotal: i.subtotal,
+        })),
+        cliente: {
+          email: cmd.shippingInfo.email,
+          nombreCompleto: cmd.shippingInfo.nombreCompleto,
+          telefono: cmd.shippingInfo.telefono,
+          ciudad: cmd.shippingInfo.ciudad,
+          departamento: cmd.shippingInfo.departamento,
+        },
         fbp: order.fbp,
         fbc: order.fbc,
-      },
-    });
+      }),
+    );
 
     return order;
   }

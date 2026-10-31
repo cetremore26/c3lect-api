@@ -1,12 +1,14 @@
 import { Module } from '@nestjs/common';
-import { GastosController } from './gastos.controller';
-import { GastosService } from './gastos.service';
-import { GastosRepository } from './gastos.repository';
-import { AuditModule } from '../audit/audit.module';
+import { GASTOS_REPOSITORY } from './application/ports/gastos-repository.port';
+import { GastosController } from './infrastructure/http/gastos.controller';
+import { GastosService } from './application/gastos.service';
+import { GastosRepository } from './infrastructure/persistence/gastos.repository';
 
 @Module({
-  imports: [AuditModule],
   controllers: [GastosController],
-  providers: [GastosService, GastosRepository],
+  providers: [
+    GastosService,
+    { provide: GASTOS_REPOSITORY, useClass: GastosRepository },
+  ],
 })
 export class GastosModule {}

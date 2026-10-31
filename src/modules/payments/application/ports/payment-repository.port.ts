@@ -1,7 +1,22 @@
-import { EstadoPago, Payment } from '@prisma/client';
-import { DraftPayload } from '../draft-payload';
+import type { EstadoPago } from '../../domain/payment-status';
+import type { DraftPayload } from '../draft-payload';
 
 export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
+
+export interface Payment {
+  id: string;
+  orderId: string | null;
+  orderNumber: string;
+  userId: string | null;
+  estado: EstadoPago;
+  preferenceId: string | null;
+  checkoutUrl: string | null;
+  mpPaymentId: string | null;
+  total: number;
+  draftPayload: DraftPayload | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
 
 export interface NewPaymentData {
   orderId: string | null;

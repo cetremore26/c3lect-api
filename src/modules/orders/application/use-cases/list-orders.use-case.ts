@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { QueryOrdersDto } from '../../dto/query-orders.dto';
+import { ListOrdersQuery, Requester } from '../commands';
 import { ORDER_REPOSITORY } from '../ports/order-repository.port';
 import type { OrderRepositoryPort } from '../ports/order-repository.port';
 
@@ -9,7 +9,7 @@ export class ListOrdersUseCase {
     @Inject(ORDER_REPOSITORY) private readonly orders: OrderRepositoryPort,
   ) {}
 
-  async execute(query: QueryOrdersDto, userId?: string, rol?: string) {
+  async execute(query: ListOrdersQuery, { userId, rol }: Requester) {
     const {
       status,
       fechaDesde,

@@ -1,13 +1,21 @@
 import { Module } from '@nestjs/common';
-import { VentasController } from './ventas.controller';
-import { VentasService } from './ventas.service';
-import { VentasRepository } from './ventas.repository';
-import { AuditModule } from '../audit/audit.module';
-import { MetaConversionsModule } from '../meta-conversions/meta-conversions.module';
+import { VENTAS_REPOSITORY } from './application/ports/ventas-repository.port';
+import { VentasDePedidoService } from './application/ventas-de-pedido.service';
+import { VentasFacade } from './application/ventas.facade';
+import { VentasService } from './application/ventas.service';
+import { VentasEventSubscribers } from './infrastructure/events/ventas-event.subscribers';
+import { VentasController } from './infrastructure/http/ventas.controller';
+import { VentasRepository } from './infrastructure/persistence/ventas.repository';
 
 @Module({
-  imports: [AuditModule, MetaConversionsModule],
   controllers: [VentasController],
-  providers: [VentasService, VentasRepository],
+  providers: [
+    VentasService,
+    VentasDePedidoService,
+    VentasFacade,
+    VentasEventSubscribers,
+    { provide: VENTAS_REPOSITORY, useClass: VentasRepository },
+  ],
+  exports: [VentasFacade],
 })
 export class VentasModule {}
