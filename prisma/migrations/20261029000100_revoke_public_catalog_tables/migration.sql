@@ -1,7 +1,7 @@
 -- Fase "contract" del contrato público del catálogo.
 --
--- NO va en prisma/migrations todavía: aplicarla mientras la tienda vieja siga
--- en producción la rompe (esa versión lee las tablas directo). Pasos:
+-- Aplicada después de desplegar el frontend que lee la vista; aplicarla con la tienda vieja
+-- en producción la rompía (esa versión leía las tablas directo). Orden seguido:
 --   1. Aplicar 20261029000000_catalogo_publico_view (crea la vista).
 --   2. Desplegar el frontend que lee `catalogo_publico`.
 --   3. Mover esta carpeta a prisma/migrations/ y correr `prisma migrate deploy`.
