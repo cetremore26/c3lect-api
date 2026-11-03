@@ -87,15 +87,21 @@ adaptador, y TypeScript avisa si DTO y comando se desincronizan.
 
 ### Despliegue del contrato del catálogo (expand / contract)
 
-1. `prisma migrate deploy` aplica la vista y le da lectura a `anon`
-   (*expand*: no quita nada, la tienda vieja sigue funcionando).
-2. Desplegar el frontend que lee `catalogo_publico`.
-3. Mover `prisma/pending-migrations/20261029000100_revoke_public_catalog_tables`
-   a `prisma/migrations/` y volver a correr `prisma migrate deploy`
-   (*contract*: `anon` pierde acceso a `productos`, `promociones` e
-   `inventario_maestro`; solo puede leer la vista).
+Se desplegó en tres pasos, ya completados:
 
-Aplicar el paso 3 antes del 2 rompe la tienda en producción.
+1. *Expand* (`20261029000000_catalogo_publico_view`): crea la vista y le da
+   lectura a `anon`, sin quitar nada; la tienda vieja siguió funcionando.
+2. Se desplegó el frontend que lee `catalogo_publico`.
+3. *Contract* (`20261029000100_revoke_public_catalog_tables`): `anon` y
+   `authenticated` pierden acceso a `productos`, `promociones` e
+   `inventario_maestro`; solo pueden leer la vista.
+
+Supabase marca la vista como "Security Definer View": es intencional. La vista
+lee las tablas con los permisos de su dueño precisamente para que `anon` no
+necesite acceso a ellas. Cambiarla a `security_invoker` rompe la tienda.
+
+Un cambio futuro al contrato sigue el mismo orden: primero lo que agrega
+(columna nueva en la vista), luego el frontend, y al final lo que quita.
 
 ## Consultas vs. efectos entre contextos
 
