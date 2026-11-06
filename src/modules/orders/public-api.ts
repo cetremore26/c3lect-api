@@ -2,6 +2,7 @@
 export { OrdersFacade } from './application/orders.facade';
 export type {
   OrderSnapshot,
+  ProductoRecibido,
   ShippingData,
 } from './application/ports/order-repository.port';
 export type { PricedOrderItem, RequestedItem } from './domain/order-pricing';

@@ -23,6 +23,7 @@ import { MarcasModule } from './modules/marcas/marcas.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { MetaConversionsModule } from './modules/meta-conversions/meta-conversions.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ResenasModule } from './modules/resenas/resenas.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     PromotionsModule,
     MetaConversionsModule,
     NotificationsModule,
+    ResenasModule,
   ],
   controllers: [AppController],
   providers: [

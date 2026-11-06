@@ -90,6 +90,12 @@ export interface NewOrderData {
   shippingInfo: ShippingData;
 }
 
+/** Un producto que el cliente ya tiene en sus manos (pedido ENTREGADO). */
+export interface ProductoRecibido {
+  productId: string;
+  nombre: string;
+}
+
 export interface UserOrderSummary {
   id: string;
   orderNumber: string;
@@ -135,4 +141,7 @@ export interface OrderRepositoryPort {
   totalsByUser(userIds: string[]): Promise<{ userId: string; total: number }[]>;
 
   listByUser(userId: string): Promise<UserOrderSummary[]>;
+
+  /** Productos distintos de los pedidos ENTREGADOS del usuario. */
+  productosRecibidos(userId: string): Promise<ProductoRecibido[]>;
 }

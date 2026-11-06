@@ -65,6 +65,7 @@ model User {
   passwordResets PasswordReset[]
   orders         Order[]
   addresses      Address[]
+  resenas        Resena[]
 
   @@map("users")
 }
@@ -369,4 +370,37 @@ model Payment {
   @@index([orderNumber])
 
   @@map("payments")
+}
+
+// ─── Reseñas ──────────────────────────────────────────────────────────────────
+
+enum EstadoResena {
+  PUBLICADA
+  OCULTA
+}
+
+// Opinión de un cliente sobre un producto que recibió (pedido ENTREGADO).
+// autorNombre y productoNombre son snapshots: la tienda lee las reseñas de la
+// vista `resenas_publicas` sin acceso a users ni a productos, y un cambio de
+// nombre posterior no reescribe lo que el cliente firmó.
+model Resena {
+  id             String       @id @default(uuid())
+  productId      String       @map("product_id")
+  productoNombre String       @map("producto_nombre")
+  userId         String       @map("user_id")
+  autorNombre    String       @map("autor_nombre")
+  calificacion   Int
+  titulo         String?
+  comentario     String
+  estado         EstadoResena @default(PUBLICADA)
+  respuesta      String?
+  respondidaAt   DateTime?    @map("respondida_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, userId])
+  @@index([productId, estado])
+  @@map("resenas")
 }

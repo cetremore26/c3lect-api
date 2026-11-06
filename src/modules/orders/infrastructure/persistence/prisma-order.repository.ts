@@ -10,6 +10,7 @@ import {
   OrderListItem,
   OrderRepositoryPort,
   OrderSnapshot,
+  ProductoRecibido,
   UserOrderSummary,
 } from '../../application/ports/order-repository.port';
 
@@ -208,6 +209,18 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  async productosRecibidos(userId: string): Promise<ProductoRecibido[]> {
+    // Se lee de order_items (snapshot del nombre al comprar) y no del
+    // catálogo: el producto puede haberse renombrado o despublicado después.
+    const items = await this.db.client.orderItem.findMany({
+      where: { order: { userId, status: EstadoPedido.ENTREGADO } },
+      select: { productId: true, nombre: true },
+      distinct: ['productId'],
+      orderBy: { productId: 'asc' },
+    });
+    return items;
   }
 
   private orderData(data: NewOrderData) {

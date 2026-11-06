@@ -183,6 +183,7 @@ describe('Arquitectura', () => {
       expense: ['gastos'],
       promotion: ['promotions'],
       auditLog: ['audit'],
+      resena: ['resenas'],
       user: ['auth', 'users', 'account'],
       address: ['account'],
       refreshToken: ['auth'],
