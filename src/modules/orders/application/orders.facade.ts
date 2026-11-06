@@ -70,4 +70,9 @@ export class OrdersFacade {
   listByUser(userId: string) {
     return this.orders.listByUser(userId);
   }
+
+  /** Productos que el cliente recibió: lo que puede reseñar. */
+  productosRecibidos(userId: string) {
+    return this.orders.productosRecibidos(userId);
+  }
 }

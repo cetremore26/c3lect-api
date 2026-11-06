@@ -64,6 +64,7 @@ adaptador, y TypeScript avisa si DTO y comando se desincronizan.
 | Ventas | `ventas` | `historical_sales` | `VentaManualRegistrada`, `VentaEliminada` | `SalidaPorPedidoRegistrada`, `ConfirmacionDePedidoRevertida` |
 | Compras | `compras` | `purchases` | `CompraRegistrada`, `CompraCorregida` | — |
 | Gastos | `gastos` | `expenses` | — | — |
+| Reseñas | `resenas` | `resenas` | — | — (consulta pedidos e identidad por sus fachadas) |
 | Auditoría | `audit` | `audit_log` | — | — (expone el puerto global `AUDIT_LOG`) |
 | Notificaciones | `notifications` | — | — | pedidos, pagos e identidad (manda los correos) |
 | Medición | `meta-conversions` | — | — | `PedidoCreado`, `PagoAprobado`, `VentaManualRegistrada` |
@@ -84,6 +85,13 @@ adaptador, y TypeScript avisa si DTO y comando se desincronizan.
   ```bash
   INTEGRATION_DATABASE_URL=postgresql://c3lect:c3lect@localhost:5433/c3lect_dev pnpm test:int
   ```
+
+- **Vista `resenas_publicas`** (migración `20261105000000`): el mismo trato
+  para las reseñas. La API escribe la tabla `resenas` (solo quien recibió el
+  producto en un pedido ENTREGADO, una vez por producto) y la tienda lee la
+  vista, que expone solo las PUBLICADAS y nunca el `user_id`. `anon` y
+  `authenticated` no tienen acceso a la tabla, y sobre la vista solo `SELECT`:
+  al ser un `SELECT` simple, Postgres la consideraría actualizable.
 
 ### Despliegue del contrato del catálogo (expand / contract)
 
