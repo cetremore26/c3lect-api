@@ -282,7 +282,7 @@ export class MailService {
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
           <h2 style="color:#b91c1c">Pago aprobado sin stock suficiente</h2>
           <p style="color:#555">El pedido <strong>#${orderNumber}</strong> fue pagado por MercadoPago pero no se pudo confirmar por falta de stock. El pedido quedó en estado PENDIENTE y requiere atención manual.</p>
-          <pre style="background:#f4f4f5;border-radius:8px;padding:16px;white-space:pre-wrap;color:#111">${detalle}</pre>
+          <pre style="background:#f4f4f5;border-radius:8px;padding:16px;white-space:pre-wrap;color:#111">${escapeHtml(detalle)}</pre>
         </div>
       `,
     });
