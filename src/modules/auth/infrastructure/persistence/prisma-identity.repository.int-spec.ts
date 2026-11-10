@@ -52,7 +52,7 @@ describeDb('PrismaIdentityRepository (OTP)', () => {
     expect(await repo.findLiveOtp(email, 'LOGIN')).toBeNull();
   });
 
-  it('reserveOtpAttempt: el quinto intento quema el código', async () => {
+  it('reserveOtpAttempt: el quinto intento aún puede acertar y consumir', async () => {
     await repo.saveOtp({
       email,
       proposito: 'LOGIN',
@@ -60,12 +60,12 @@ describeDb('PrismaIdentityRepository (OTP)', () => {
       expiresAt: enUnRato(),
     });
     const { id } = (await repo.findLiveOtp(email, 'LOGIN'))!;
-    for (let i = 0; i < 4; i++)
+    for (let i = 0; i < 4; i++) {
       expect(await repo.reserveOtpAttempt(id, 5)).toBe(true);
-    expect((await repo.findLiveOtp(email, 'LOGIN'))!.intentos).toBe(4);
+    }
     expect(await repo.reserveOtpAttempt(id, 5)).toBe(true);
+    expect(await repo.consumeOtp(id)).toBe(true);
     expect(await repo.findLiveOtp(email, 'LOGIN')).toBeNull();
-    expect(await repo.reserveOtpAttempt(id, 5)).toBe(false);
   });
 
   it('reserveOtpAttempt concurrente: 8 llamadas, exactamente 5 ganan', async () => {
@@ -80,7 +80,7 @@ describeDb('PrismaIdentityRepository (OTP)', () => {
       Array.from({ length: 8 }, () => repo.reserveOtpAttempt(id, 5)),
     );
     expect(r.filter(Boolean)).toHaveLength(5);
-    expect(await repo.findLiveOtp(email, 'LOGIN')).toBeNull();
+    expect(await repo.reserveOtpAttempt(id, 5)).toBe(false);
   });
 
   it('invalidateOtps solo afecta al propósito indicado', async () => {

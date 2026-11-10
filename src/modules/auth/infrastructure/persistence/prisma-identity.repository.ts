@@ -120,12 +120,7 @@ export class PrismaIdentityRepository implements IdentityRepositoryPort {
       where: { id, used: false, intentos: { lt: maxIntentos } },
       data: { intentos: { increment: 1 } },
     });
-    if (count !== 1) return false;
-    await this.db.client.otpCode.updateMany({
-      where: { id, intentos: { gte: maxIntentos } },
-      data: { used: true },
-    });
-    return true;
+    return count === 1;
   }
 
   async consumeOtp(id: string): Promise<boolean> {

@@ -63,7 +63,8 @@ export interface IdentityRepositoryPort {
   findLiveOtp(email: string, proposito: PropositoOtp): Promise<OtpVivo | null>;
   /**
    * Reserva atómica de un intento: true solo si el código seguía sin usar y
-   * con menos de maxIntentos; al llegar a maxIntentos el código se quema.
+   * con menos de maxIntentos. Nunca lo quema: la reserva número maxIntentos
+   * aún puede acertar y consumirlo; la siguiente devuelve false.
    */
   reserveOtpAttempt(id: string, maxIntentos: number): Promise<boolean>;
   /** Consumo atómico: true solo para la llamada que lo marca como usado. */
