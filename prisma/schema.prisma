@@ -74,13 +74,13 @@ model User {
 // snapshot inmutable por pedido). Varias direcciones por usuario, una
 // marcada como principal a la vez (lo garantiza AccountService, no la BD).
 model Address {
-  id           String   @id @default(uuid())
-  userId       String   @map("user_id")
+  id           String  @id @default(uuid())
+  userId       String  @map("user_id")
   alias        String?
   ciudad       String
   departamento String
   direccion    String
-  esPrincipal  Boolean  @default(false) @map("es_principal")
+  esPrincipal  Boolean @default(false) @map("es_principal")
 
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -102,14 +102,22 @@ model RefreshToken {
   @@map("refresh_tokens")
 }
 
-model OtpCode {
-  id        String   @id @default(uuid())
-  email     String
-  codeHash  String   @map("code_hash")
-  expiresAt DateTime @map("expires_at")
-  used      Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
+enum PropositoOtp {
+  LOGIN
+  ADMIN_2FA
+}
 
+model OtpCode {
+  id        String       @id @default(uuid())
+  email     String
+  codeHash  String       @map("code_hash")
+  expiresAt DateTime     @map("expires_at")
+  used      Boolean      @default(false)
+  intentos  Int          @default(0)
+  proposito PropositoOtp @default(LOGIN)
+  createdAt DateTime     @default(now()) @map("created_at")
+
+  @@index([email, proposito, createdAt])
   @@map("otp_codes")
 }
 
@@ -154,22 +162,22 @@ enum EstadoPago {
 }
 
 model Order {
-  id            String        @id @default(uuid())
-  orderNumber   String        @unique @map("order_number")
-  userId        String?       @map("user_id")
-  status        EstadoPedido   @default(PENDIENTE)
+  id            String       @id @default(uuid())
+  orderNumber   String       @unique @map("order_number")
+  userId        String?      @map("user_id")
+  status        EstadoPedido @default(PENDIENTE)
   subtotal      Int
   total         Int
-  paymentMethod MetodoPago @map("payment_method")
-  createdAt     DateTime      @default(now()) @map("created_at")
-  updatedAt     DateTime      @updatedAt @map("updated_at")
+  paymentMethod MetodoPago   @map("payment_method")
+  createdAt     DateTime     @default(now()) @map("created_at")
+  updatedAt     DateTime     @updatedAt @map("updated_at")
 
   // Cookies de Meta Pixel capturadas en el checkout. Se guardan porque en la
   // rama de MercadoPago el evento de Conversions API se envía cuando llega el
   // webhook, minutos u horas después, y ahí ya no hay navegador que consultar.
   // Sin fbc, Meta no puede atribuir la venta al clic del anuncio.
-  fbp           String?       @map("meta_fbp")
-  fbc           String?       @map("meta_fbc")
+  fbp String? @map("meta_fbp")
+  fbc String? @map("meta_fbc")
 
   user            User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
   items           OrderItem[]
@@ -212,12 +220,12 @@ model ShippingInfo {
 }
 
 model OrderStatusHistory {
-  id             String       @id @default(uuid())
-  orderId        String       @map("order_id")
+  id             String        @id @default(uuid())
+  orderId        String        @map("order_id")
   statusAnterior EstadoPedido? @map("status_anterior")
   statusNuevo    EstadoPedido  @map("status_nuevo")
-  changedBy      String?      @map("changed_by")
-  createdAt      DateTime     @default(now()) @map("created_at")
+  changedBy      String?       @map("changed_by")
+  createdAt      DateTime      @default(now()) @map("created_at")
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -228,8 +236,8 @@ model OrderStatusHistory {
 
 model AuditLog {
   id          String   @id @default(uuid())
-  accion      String   // CREAR | EDITAR | ELIMINAR | ESTADO
-  entidad     String   // producto | pedido
+  accion      String // CREAR | EDITAR | ELIMINAR | ESTADO
+  entidad     String // producto | pedido
   entidadId   String   @map("entidad_id")
   descripcion String
   userId      String?  @map("user_id")
@@ -368,7 +376,6 @@ model Payment {
   order Order? @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
   @@index([orderNumber])
-
   @@map("payments")
 }
 

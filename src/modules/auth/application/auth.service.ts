@@ -10,6 +10,12 @@ import {
 } from '../../../shared/domain/domain-error';
 import { parseExpiry } from '../domain/expiry';
 import {
+  generarCodigoOtp,
+  OTP_MAX_INTENTOS,
+  OTP_VIGENCIA_MS,
+  PropositoOtp,
+} from '../domain/otp-policy';
+import {
   CodigoDeAccesoSolicitado,
   RestablecimientoDeClaveSolicitado,
   UsuarioRegistrado,
@@ -97,11 +103,17 @@ export class AuthService {
   }
 
   async requestOtp(cmd: { email: string }) {
-    const codigo = String(Math.floor(100000 + Math.random() * 900000));
+    const codigo = generarCodigoOtp();
     const codeHash = await this.hasher.hash(codigo);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + OTP_VIGENCIA_MS);
 
-    await this.identity.saveOtp(cmd.email, codeHash, expiresAt);
+    await this.identity.invalidateOtps(cmd.email, PropositoOtp.LOGIN);
+    await this.identity.saveOtp({
+      email: cmd.email,
+      proposito: PropositoOtp.LOGIN,
+      codeHash,
+      expiresAt,
+    });
     await this.events.publish(
       new CodigoDeAccesoSolicitado({ email: cmd.email, codigo }),
     );
@@ -110,18 +122,16 @@ export class AuthService {
   }
 
   async verifyOtp(cmd: { email: string; code: string }) {
-    const records = await this.identity.findValidOtps(cmd.email);
+    const otp = await this.identity.findLiveOtp(cmd.email, PropositoOtp.LOGIN);
+    if (!otp) throw new UnauthorizedError('Código inválido o expirado.');
 
-    let matchedId: string | null = null;
-    for (const record of records) {
-      if (await this.hasher.verify(record.hash, cmd.code)) {
-        matchedId = record.id;
-        break;
-      }
+    if (!(await this.hasher.verify(otp.hash, cmd.code))) {
+      await this.identity.registerFailedOtpAttempt(otp.id, OTP_MAX_INTENTOS);
+      throw new UnauthorizedError('Código inválido o expirado.');
     }
-    if (!matchedId) throw new UnauthorizedError('Código inválido o expirado.');
-
-    await this.identity.markOtpUsed(matchedId);
+    if (!(await this.identity.consumeOtp(otp.id))) {
+      throw new UnauthorizedError('Código inválido o expirado.');
+    }
 
     const user = await this.identity.findUserByEmail(cmd.email);
     if (!user) return { requiresRegistration: true };

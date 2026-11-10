@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaTransactionHost } from '../../../../shared/infrastructure/prisma/prisma-transaction.host';
+import type { PropositoOtp } from '../../domain/otp-policy';
 import {
   Credenciales,
   IdentityRepositoryPort,
-  SecretoPendiente,
+  OtpVivo,
 } from '../../application/ports/identity-repository.port';
 
 const credencialesSelect = {
@@ -74,26 +75,69 @@ export class PrismaIdentityRepository implements IdentityRepositoryPort {
     await this.db.client.refreshToken.deleteMany({ where: { userId } });
   }
 
-  async saveOtp(email: string, codeHash: string, expiresAt: Date) {
-    await this.db.client.otpCode.create({
-      data: { email, codeHash, expiresAt },
+  countOtpsSince(
+    email: string,
+    proposito: PropositoOtp,
+    desde: Date,
+  ): Promise<number> {
+    return this.db.client.otpCode.count({
+      where: { email, proposito, createdAt: { gte: desde } },
     });
   }
 
-  async findValidOtps(email: string): Promise<SecretoPendiente[]> {
-    const rows = await this.db.client.otpCode.findMany({
-      where: { email, used: false, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, codeHash: true },
-    });
-    return rows.map((r) => ({ id: r.id, hash: r.codeHash }));
-  }
-
-  async markOtpUsed(id: string): Promise<void> {
-    await this.db.client.otpCode.update({
-      where: { id },
+  async invalidateOtps(email: string, proposito: PropositoOtp): Promise<void> {
+    await this.db.client.otpCode.updateMany({
+      where: { email, proposito, used: false },
       data: { used: true },
     });
+  }
+
+  async saveOtp(data: {
+    email: string;
+    proposito: PropositoOtp;
+    codeHash: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    await this.db.client.otpCode.create({ data });
+  }
+
+  async findLiveOtp(
+    email: string,
+    proposito: PropositoOtp,
+  ): Promise<OtpVivo | null> {
+    const row = await this.db.client.otpCode.findFirst({
+      where: { email, proposito, used: false, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, codeHash: true, intentos: true },
+    });
+    return row
+      ? { id: row.id, hash: row.codeHash, intentos: row.intentos }
+      : null;
+  }
+
+  async registerFailedOtpAttempt(
+    id: string,
+    maxIntentos: number,
+  ): Promise<void> {
+    const { intentos } = await this.db.client.otpCode.update({
+      where: { id },
+      data: { intentos: { increment: 1 } },
+      select: { intentos: true },
+    });
+    if (intentos >= maxIntentos) {
+      await this.db.client.otpCode.updateMany({
+        where: { id },
+        data: { used: true },
+      });
+    }
+  }
+
+  async consumeOtp(id: string): Promise<boolean> {
+    const { count } = await this.db.client.otpCode.updateMany({
+      where: { id, used: false },
+      data: { used: true },
+    });
+    return count === 1;
   }
 
   async savePasswordReset(userId: string, tokenHash: string, expiresAt: Date) {
