@@ -52,7 +52,7 @@ describeDb('PrismaIdentityRepository (OTP)', () => {
     expect(await repo.findLiveOtp(email, 'LOGIN')).toBeNull();
   });
 
-  it('el quinto intento fallido quema el código', async () => {
+  it('reserveOtpAttempt: el quinto intento quema el código', async () => {
     await repo.saveOtp({
       email,
       proposito: 'LOGIN',
@@ -60,9 +60,26 @@ describeDb('PrismaIdentityRepository (OTP)', () => {
       expiresAt: enUnRato(),
     });
     const { id } = (await repo.findLiveOtp(email, 'LOGIN'))!;
-    for (let i = 0; i < 4; i++) await repo.registerFailedOtpAttempt(id, 5);
+    for (let i = 0; i < 4; i++)
+      expect(await repo.reserveOtpAttempt(id, 5)).toBe(true);
     expect((await repo.findLiveOtp(email, 'LOGIN'))!.intentos).toBe(4);
-    await repo.registerFailedOtpAttempt(id, 5);
+    expect(await repo.reserveOtpAttempt(id, 5)).toBe(true);
+    expect(await repo.findLiveOtp(email, 'LOGIN')).toBeNull();
+    expect(await repo.reserveOtpAttempt(id, 5)).toBe(false);
+  });
+
+  it('reserveOtpAttempt concurrente: 8 llamadas, exactamente 5 ganan', async () => {
+    await repo.saveOtp({
+      email,
+      proposito: 'LOGIN',
+      codeHash: 'h',
+      expiresAt: enUnRato(),
+    });
+    const { id } = (await repo.findLiveOtp(email, 'LOGIN'))!;
+    const r = await Promise.all(
+      Array.from({ length: 8 }, () => repo.reserveOtpAttempt(id, 5)),
+    );
+    expect(r.filter(Boolean)).toHaveLength(5);
     expect(await repo.findLiveOtp(email, 'LOGIN')).toBeNull();
   });
 

@@ -115,21 +115,17 @@ export class PrismaIdentityRepository implements IdentityRepositoryPort {
       : null;
   }
 
-  async registerFailedOtpAttempt(
-    id: string,
-    maxIntentos: number,
-  ): Promise<void> {
-    const { intentos } = await this.db.client.otpCode.update({
-      where: { id },
+  async reserveOtpAttempt(id: string, maxIntentos: number): Promise<boolean> {
+    const { count } = await this.db.client.otpCode.updateMany({
+      where: { id, used: false, intentos: { lt: maxIntentos } },
       data: { intentos: { increment: 1 } },
-      select: { intentos: true },
     });
-    if (intentos >= maxIntentos) {
-      await this.db.client.otpCode.updateMany({
-        where: { id },
-        data: { used: true },
-      });
-    }
+    if (count !== 1) return false;
+    await this.db.client.otpCode.updateMany({
+      where: { id, intentos: { gte: maxIntentos } },
+      data: { used: true },
+    });
+    return true;
   }
 
   async consumeOtp(id: string): Promise<boolean> {

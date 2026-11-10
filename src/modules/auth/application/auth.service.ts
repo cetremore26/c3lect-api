@@ -12,6 +12,8 @@ import { parseExpiry } from '../domain/expiry';
 import {
   generarCodigoOtp,
   OTP_MAX_INTENTOS,
+  OTP_MAX_POR_VENTANA,
+  OTP_VENTANA_MS,
   OTP_VIGENCIA_MS,
   PropositoOtp,
 } from '../domain/otp-policy';
@@ -103,35 +105,12 @@ export class AuthService {
   }
 
   async requestOtp(cmd: { email: string }) {
-    const codigo = generarCodigoOtp();
-    const codeHash = await this.hasher.hash(codigo);
-    const expiresAt = new Date(Date.now() + OTP_VIGENCIA_MS);
-
-    await this.identity.invalidateOtps(cmd.email, PropositoOtp.LOGIN);
-    await this.identity.saveOtp({
-      email: cmd.email,
-      proposito: PropositoOtp.LOGIN,
-      codeHash,
-      expiresAt,
-    });
-    await this.events.publish(
-      new CodigoDeAccesoSolicitado({ email: cmd.email, codigo }),
-    );
-
+    await this.emitirOtp(cmd.email, PropositoOtp.LOGIN);
     return { message: 'Si el correo está registrado, recibirás un código.' };
   }
 
   async verifyOtp(cmd: { email: string; code: string }) {
-    const otp = await this.identity.findLiveOtp(cmd.email, PropositoOtp.LOGIN);
-    if (!otp) throw new UnauthorizedError('Código inválido o expirado.');
-
-    if (!(await this.hasher.verify(otp.hash, cmd.code))) {
-      await this.identity.registerFailedOtpAttempt(otp.id, OTP_MAX_INTENTOS);
-      throw new UnauthorizedError('Código inválido o expirado.');
-    }
-    if (!(await this.identity.consumeOtp(otp.id))) {
-      throw new UnauthorizedError('Código inválido o expirado.');
-    }
+    await this.verificarOtp(cmd.email, PropositoOtp.LOGIN, cmd.code);
 
     const user = await this.identity.findUserByEmail(cmd.email);
     if (!user) return { requiresRegistration: true };
@@ -205,6 +184,53 @@ export class AuthService {
   async logout(userId: string) {
     await this.identity.deleteRefreshTokensOf(userId);
     return { message: 'Sesión cerrada.' };
+  }
+
+  // Un solo código vivo por correo y propósito; si ya se emitieron
+  // OTP_MAX_POR_VENTANA en la ventana, no emite nada (la respuesta al
+  // cliente es la misma, así no se revela nada).
+  private async emitirOtp(
+    email: string,
+    proposito: PropositoOtp,
+  ): Promise<void> {
+    const desde = new Date(Date.now() - OTP_VENTANA_MS);
+    const emitidos = await this.identity.countOtpsSince(
+      email,
+      proposito,
+      desde,
+    );
+    if (emitidos >= OTP_MAX_POR_VENTANA) return;
+
+    const codigo = generarCodigoOtp();
+    const codeHash = await this.hasher.hash(codigo);
+    const expiresAt = new Date(Date.now() + OTP_VIGENCIA_MS);
+
+    await this.uow.run(async () => {
+      await this.identity.invalidateOtps(email, proposito);
+      await this.identity.saveOtp({ email, proposito, codeHash, expiresAt });
+      await this.events.publish(
+        new CodigoDeAccesoSolicitado({ email, codigo }),
+      );
+    });
+  }
+
+  // El intento se reserva ANTES de comparar: así N adivinanzas en paralelo
+  // no pueden superar OTP_MAX_INTENTOS por código.
+  private async verificarOtp(
+    email: string,
+    proposito: PropositoOtp,
+    code: string,
+  ): Promise<void> {
+    const invalido = () => new UnauthorizedError('Código inválido o expirado.');
+
+    const otp = await this.identity.findLiveOtp(email, proposito);
+    if (!otp) throw invalido();
+
+    if (!(await this.identity.reserveOtpAttempt(otp.id, OTP_MAX_INTENTOS))) {
+      throw invalido();
+    }
+    if (!(await this.hasher.verify(otp.hash, code))) throw invalido();
+    if (!(await this.identity.consumeOtp(otp.id))) throw invalido();
   }
 
   private async generateTokens(user: Credenciales) {
