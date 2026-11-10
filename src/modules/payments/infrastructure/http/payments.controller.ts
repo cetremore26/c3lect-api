@@ -83,7 +83,7 @@ export class PaymentsController {
 
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
-  @SkipThrottle()
+  @SkipThrottle({ default: true, auth: true })
   @ApiOperation({
     summary: 'Webhook de MercadoPago (público)',
     description:
