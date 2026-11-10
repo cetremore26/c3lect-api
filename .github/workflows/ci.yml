@@ -31,8 +31,5 @@ jobs:
       - name: Compilar
         run: pnpm build
 
-      # Informativo por ahora: el codigo arrastra avisos de lint previos.
-      # Cuando esten resueltos, quitar continue-on-error para que bloquee.
-      - name: Lint (no bloqueante)
-        continue-on-error: true
-        run: pnpm exec eslint "{src,apps,libs}/**/*.ts"
+      - name: Lint
+        run: pnpm lint:check
