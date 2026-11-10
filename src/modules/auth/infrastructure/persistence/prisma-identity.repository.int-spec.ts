@@ -120,3 +120,51 @@ describeDb('PrismaIdentityRepository (OTP)', () => {
     ).toBe(0);
   });
 });
+
+describeDb('PrismaIdentityRepository (reset de contraseña)', () => {
+  let prisma: PrismaService;
+  let repo: PrismaIdentityRepository;
+  let userId: string;
+
+  beforeAll(async () => {
+    process.env.DATABASE_URL = url;
+    prisma = new PrismaService();
+    await prisma.$connect();
+    repo = new PrismaIdentityRepository(new PrismaTransactionHost(prisma));
+    const user = await prisma.user.create({
+      data: {
+        email: `reset-${randomUUID()}@test.local`,
+        nombre: 'Reset',
+        passwordHash: 'h',
+      },
+    });
+    userId = user.id;
+  });
+
+  afterAll(async () => {
+    await prisma.user.delete({ where: { id: userId } });
+    await prisma.$disconnect();
+  });
+
+  it('consumePasswordReset concurrente: solo una llamada gana', async () => {
+    const { id } = await repo.savePasswordReset(userId, 'h', enUnRato());
+    const r = await Promise.all([
+      repo.consumePasswordReset(id),
+      repo.consumePasswordReset(id),
+      repo.consumePasswordReset(id),
+    ]);
+    expect(r.filter(Boolean)).toHaveLength(1);
+    expect(await repo.findValidPasswordReset(id)).toBeNull();
+  });
+
+  it('invalidatePasswordResetsOf deja findValidPasswordReset en null', async () => {
+    const { id } = await repo.savePasswordReset(userId, 'h', enUnRato());
+    expect(await repo.findValidPasswordReset(id)).toEqual({
+      id,
+      userId,
+      hash: 'h',
+    });
+    await repo.invalidatePasswordResetsOf(userId);
+    expect(await repo.findValidPasswordReset(id)).toBeNull();
+  });
+});

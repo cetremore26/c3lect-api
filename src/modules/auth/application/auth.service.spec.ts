@@ -5,8 +5,10 @@ import {
 import { fakeEventBus, fakeUnitOfWork } from '../../../shared/testing/fakes';
 import {
   CodigoDeAccesoSolicitado,
+  RestablecimientoDeClaveSolicitado,
   UsuarioRegistrado,
 } from '../domain/identity-events';
+import { hashDeSecreto } from '../domain/secret-token';
 import { AuthService } from './auth.service';
 
 const usuario = {
@@ -50,7 +52,7 @@ function makeService() {
     events as never,
     purposeTokens,
   );
-  return { service, identity, hasher, tokens, events, purposeTokens };
+  return { service, identity, hasher, tokens, events, purposeTokens, settings };
 }
 
 describe('requestOtp', () => {
@@ -371,5 +373,123 @@ describe('segundo factor del admin', () => {
     ).rejects.toThrow('Código inválido o expirado.');
     expect(identity.consumeOtp).toHaveBeenCalled();
     expect(tokens.issue).not.toHaveBeenCalled();
+  });
+});
+
+describe('restablecer contraseña', () => {
+  const secreto = 'b'.repeat(64);
+
+  function conReset() {
+    const ctx = makeService();
+    Object.assign(ctx.identity, {
+      invalidatePasswordResetsOf: jest.fn(),
+      savePasswordReset: jest.fn().mockResolvedValue({ id: 'reset-1' }),
+      findValidPasswordReset: jest.fn(),
+      consumePasswordReset: jest.fn(),
+      updatePassword: jest.fn(),
+      deleteRefreshTokensOf: jest.fn(),
+    });
+    Object.assign(ctx.settings, { frontendUrl: jest.fn(() => 'http://front') });
+    return {
+      ...ctx,
+      identity: ctx.identity as typeof ctx.identity & Record<string, jest.Mock>,
+    };
+  }
+
+  it('requestPasswordReset invalida los anteriores y manda el enlace con fragmento', async () => {
+    const { service, identity, events } = conReset();
+    identity.findUserByEmail.mockResolvedValue(usuario);
+    await service.requestPasswordReset({ email: 'a@x.com' });
+    expect(identity.invalidatePasswordResetsOf).toHaveBeenCalledWith('u-1');
+    expect(identity.savePasswordReset).toHaveBeenCalledWith(
+      'u-1',
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+      expect.any(Date),
+    );
+    const evento = events.publish.mock
+      .calls[0][0] as RestablecimientoDeClaveSolicitado;
+    expect(evento.solicitud.resetUrl).toMatch(
+      /^http:\/\/front\/reset-password#token=reset-1\.[0-9a-f]{64}$/,
+    );
+  });
+
+  it('requestPasswordReset con correo desconocido no hace nada y responde igual', async () => {
+    const { service, identity, events } = conReset();
+    identity.findUserByEmail.mockResolvedValue(null);
+    const r = await service.requestPasswordReset({ email: 'no@x.com' });
+    expect(r.message).toBe(
+      'Si el correo está registrado, recibirás un enlace.',
+    );
+    expect(identity.savePasswordReset).not.toHaveBeenCalled();
+    expect(events.publish).not.toHaveBeenCalled();
+  });
+
+  it('resetPassword con token del formato viejo (sin punto) → 401 sin consultar la base', async () => {
+    const { service, identity } = conReset();
+    await expect(
+      service.resetPassword({ token: secreto, newPassword: 'Nueva1234' }),
+    ).rejects.toThrow('Token inválido o expirado.');
+    expect(identity.findValidPasswordReset).not.toHaveBeenCalled();
+  });
+
+  it('resetPassword con fila inexistente → 401', async () => {
+    const { service, identity } = conReset();
+    identity.findValidPasswordReset.mockResolvedValue(null);
+    await expect(
+      service.resetPassword({
+        token: `reset-1.${secreto}`,
+        newPassword: 'Nueva1234',
+      }),
+    ).rejects.toThrow('Token inválido o expirado.');
+  });
+
+  it('resetPassword con secreto que no cuadra → 401', async () => {
+    const { service, identity } = conReset();
+    identity.findValidPasswordReset.mockResolvedValue({
+      id: 'reset-1',
+      userId: 'u-1',
+      hash: hashDeSecreto('c'.repeat(64)),
+    });
+    await expect(
+      service.resetPassword({
+        token: `reset-1.${secreto}`,
+        newPassword: 'Nueva1234',
+      }),
+    ).rejects.toThrow('Token inválido o expirado.');
+    expect(identity.consumePasswordReset).not.toHaveBeenCalled();
+  });
+
+  it('resetPassword consumido por otra petición → 401 y no cambia la contraseña', async () => {
+    const { service, identity } = conReset();
+    identity.findValidPasswordReset.mockResolvedValue({
+      id: 'reset-1',
+      userId: 'u-1',
+      hash: hashDeSecreto(secreto),
+    });
+    identity.consumePasswordReset.mockResolvedValue(false);
+    await expect(
+      service.resetPassword({
+        token: `reset-1.${secreto}`,
+        newPassword: 'Nueva1234',
+      }),
+    ).rejects.toThrow('Token inválido o expirado.');
+    expect(identity.updatePassword).not.toHaveBeenCalled();
+  });
+
+  it('resetPassword correcto cambia la contraseña y cierra sesiones', async () => {
+    const { service, identity } = conReset();
+    identity.findValidPasswordReset.mockResolvedValue({
+      id: 'reset-1',
+      userId: 'u-1',
+      hash: hashDeSecreto(secreto),
+    });
+    identity.consumePasswordReset.mockResolvedValue(true);
+    await service.resetPassword({
+      token: `reset-1.${secreto}`,
+      newPassword: 'Nueva1234',
+    });
+    expect(identity.consumePasswordReset).toHaveBeenCalledWith('reset-1');
+    expect(identity.updatePassword).toHaveBeenCalledWith('u-1', 'H:Nueva1234');
+    expect(identity.deleteRefreshTokensOf).toHaveBeenCalledWith('u-1');
   });
 });

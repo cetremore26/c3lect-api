@@ -74,7 +74,12 @@ export interface IdentityRepositoryPort {
     userId: string,
     tokenHash: string,
     expiresAt: Date,
-  ): Promise<void>;
-  findValidPasswordResets(): Promise<(SecretoPendiente & { userId: string })[]>;
-  markPasswordResetUsed(id: string): Promise<void>;
+  ): Promise<{ id: string }>;
+  /** Marca como usados los resets vivos del usuario (solo vale el último). */
+  invalidatePasswordResetsOf(userId: string): Promise<void>;
+  findValidPasswordReset(
+    id: string,
+  ): Promise<(SecretoPendiente & { userId: string }) | null>;
+  /** Consumo atómico: true solo para la llamada que lo marca como usado. */
+  consumePasswordReset(id: string): Promise<boolean>;
 }

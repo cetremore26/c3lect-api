@@ -132,23 +132,33 @@ export class PrismaIdentityRepository implements IdentityRepositoryPort {
   }
 
   async savePasswordReset(userId: string, tokenHash: string, expiresAt: Date) {
-    await this.db.client.passwordReset.create({
+    const row = await this.db.client.passwordReset.create({
       data: { userId, tokenHash, expiresAt },
+      select: { id: true },
     });
+    return { id: row.id };
   }
 
-  async findValidPasswordResets() {
-    const rows = await this.db.client.passwordReset.findMany({
-      where: { used: false, expiresAt: { gt: new Date() } },
-      select: { id: true, userId: true, tokenHash: true },
-    });
-    return rows.map((r) => ({ id: r.id, userId: r.userId, hash: r.tokenHash }));
-  }
-
-  async markPasswordResetUsed(id: string): Promise<void> {
-    await this.db.client.passwordReset.update({
-      where: { id },
+  async invalidatePasswordResetsOf(userId: string): Promise<void> {
+    await this.db.client.passwordReset.updateMany({
+      where: { userId, used: false },
       data: { used: true },
     });
+  }
+
+  async findValidPasswordReset(id: string) {
+    const row = await this.db.client.passwordReset.findFirst({
+      where: { id, used: false, expiresAt: { gt: new Date() } },
+      select: { id: true, userId: true, tokenHash: true },
+    });
+    return row ? { id: row.id, userId: row.userId, hash: row.tokenHash } : null;
+  }
+
+  async consumePasswordReset(id: string): Promise<boolean> {
+    const { count } = await this.db.client.passwordReset.updateMany({
+      where: { id, used: false },
+      data: { used: true },
+    });
+    return count === 1;
   }
 }

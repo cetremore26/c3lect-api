@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
 import { EVENT_BUS } from '../../../shared/application/ports/event-bus.port';
 import type { EventBusPort } from '../../../shared/application/ports/event-bus.port';
 import { UNIT_OF_WORK } from '../../../shared/application/ports/unit-of-work.port';
@@ -10,6 +10,12 @@ import {
   UnauthorizedError,
 } from '../../../shared/domain/domain-error';
 import { parseExpiry } from '../domain/expiry';
+import {
+  crearTokenDeReset,
+  hashDeSecreto,
+  hashesIguales,
+  parsearTokenDeReset,
+} from '../domain/secret-token';
 import {
   generarCodigoOtp,
   OTP_MAX_INTENTOS,
@@ -48,9 +54,6 @@ export interface RegisterCommand {
   nombre: string;
   telefono?: string;
 }
-
-const sha256 = (value: string) =>
-  createHash('sha256').update(value).digest('hex');
 
 @Injectable()
 export class AuthService {
@@ -192,41 +195,48 @@ export class AuthService {
     const user = await this.identity.findUserByEmail(cmd.email);
 
     if (user) {
-      const rawToken = randomBytes(32).toString('hex');
-      const tokenHash = await this.hasher.hash(rawToken);
+      const secreto = randomBytes(32).toString('hex');
       const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
-      await this.identity.savePasswordReset(user.id, tokenHash, expiresAt);
-      await this.events.publish(
-        new RestablecimientoDeClaveSolicitado({
-          email: user.email,
-          resetUrl: `${this.settings.frontendUrl()}/reset-password?token=${rawToken}`,
-        }),
-      );
+      await this.uow.run(async () => {
+        await this.identity.invalidatePasswordResetsOf(user.id);
+        const { id } = await this.identity.savePasswordReset(
+          user.id,
+          hashDeSecreto(secreto),
+          expiresAt,
+        );
+        // El token va en el fragmento: no llega a terceros por Referer ni
+        // queda en los logs del servidor.
+        await this.events.publish(
+          new RestablecimientoDeClaveSolicitado({
+            email: user.email,
+            resetUrl: `${this.settings.frontendUrl()}/reset-password#token=${crearTokenDeReset(id, secreto)}`,
+          }),
+        );
+      });
     }
 
     return { message: 'Si el correo está registrado, recibirás un enlace.' };
   }
 
   async resetPassword(cmd: { token: string; newPassword: string }) {
-    const records = await this.identity.findValidPasswordResets();
+    const invalido = () => new UnauthorizedError('Token inválido o expirado.');
 
-    let matched: (typeof records)[number] | null = null;
-    for (const record of records) {
-      if (await this.hasher.verify(record.hash, cmd.token)) {
-        matched = record;
-        break;
-      }
+    const parsed = parsearTokenDeReset(cmd.token);
+    if (!parsed) throw invalido();
+    const record = await this.identity.findValidPasswordReset(parsed.id);
+    if (!record || !hashesIguales(record.hash, hashDeSecreto(parsed.secreto))) {
+      throw invalido();
     }
-    if (!matched) throw new UnauthorizedError('Token inválido o expirado.');
-    const { id, userId } = matched;
 
     const passwordHash = await this.hasher.hash(cmd.newPassword);
 
     await this.uow.run(async () => {
-      await this.identity.updatePassword(userId, passwordHash);
-      await this.identity.markPasswordResetUsed(id);
-      await this.identity.deleteRefreshTokensOf(userId);
+      if (!(await this.identity.consumePasswordReset(record.id))) {
+        throw invalido();
+      }
+      await this.identity.updatePassword(record.userId, passwordHash);
+      await this.identity.deleteRefreshTokensOf(record.userId);
     });
 
     return { message: 'Contraseña actualizada correctamente.' };
@@ -234,7 +244,7 @@ export class AuthService {
 
   async refreshTokens(cmd: { refreshToken: string }) {
     const record = await this.identity.findValidRefreshToken(
-      sha256(cmd.refreshToken),
+      hashDeSecreto(cmd.refreshToken),
     );
     if (!record)
       throw new UnauthorizedError('Refresh token inválido o expirado.');
@@ -312,7 +322,7 @@ export class AuthService {
     const rawToken = randomBytes(32).toString('hex');
     await this.identity.saveRefreshToken(
       user.id,
-      sha256(rawToken),
+      hashDeSecreto(rawToken),
       parseExpiry(this.settings.refreshTokenTtl()),
     );
 
