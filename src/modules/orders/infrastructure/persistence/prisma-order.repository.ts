@@ -178,6 +178,15 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
     });
   }
 
+  countByShippingEmailSince(email: string, desde: Date): Promise<number> {
+    return this.db.client.order.count({
+      where: {
+        createdAt: { gte: desde },
+        shippingInfo: { email: { equals: email, mode: 'insensitive' } },
+      },
+    });
+  }
+
   async linkGuestOrders(email: string, userId: string): Promise<void> {
     await this.db.client.order.updateMany({
       where: {

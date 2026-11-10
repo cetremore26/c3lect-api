@@ -6,6 +6,7 @@ import {
   ExceptionFilter,
   ForbiddenException,
   HttpException,
+  HttpStatus,
   InternalServerErrorException,
   Logger,
   NotFoundException,
@@ -18,6 +19,7 @@ import {
   DomainError,
   ForbiddenError,
   NotFoundError,
+  TooManyRequestsError,
   UnauthorizedError,
 } from '../../../domain/domain-error';
 
@@ -69,6 +71,8 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       return new ForbiddenException(error.message);
     if (error instanceof ConflictError)
       return new ConflictException(error.message);
+    if (error instanceof TooManyRequestsError)
+      return new HttpException(error.message, HttpStatus.TOO_MANY_REQUESTS);
     return new BadRequestException(error.message);
   }
 

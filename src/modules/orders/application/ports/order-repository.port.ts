@@ -136,6 +136,9 @@ export interface OrderRepositoryPort {
     changedBy: string;
   }): Promise<OrderForStatusTransition>;
 
+  /** Pedidos cuyo email de envío (sin distinguir mayúsculas) se creó desde `desde`. */
+  countByShippingEmailSince(email: string, desde: Date): Promise<number>;
+
   linkGuestOrders(email: string, userId: string): Promise<void>;
 
   totalsByUser(userIds: string[]): Promise<{ userId: string; total: number }[]>;

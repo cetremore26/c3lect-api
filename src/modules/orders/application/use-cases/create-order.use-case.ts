@@ -1,6 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EVENT_BUS } from '../../../../shared/application/ports/event-bus.port';
 import type { EventBusPort } from '../../../../shared/application/ports/event-bus.port';
+import { TooManyRequestsError } from '../../../../shared/domain/domain-error';
+import { MAX_PEDIDOS_POR_EMAIL_POR_HORA } from '../../domain/order-limits';
 import { PedidoCreado } from '../../domain/order-events';
 import { buildOrderNumber } from '../../domain/order-number';
 import { CreateOrderCommand } from '../commands';
@@ -21,6 +23,17 @@ export class CreateOrderUseCase {
   // disparan los módulos que escuchan PedidoCreado — este caso de uso no
   // sabe que existen.
   async execute(cmd: CreateOrderCommand, userId?: string) {
+    const desde = new Date(Date.now() - 60 * 60 * 1000);
+    const recientes = await this.orders.countByShippingEmailSince(
+      cmd.shippingInfo.email,
+      desde,
+    );
+    if (recientes >= MAX_PEDIDOS_POR_EMAIL_POR_HORA) {
+      throw new TooManyRequestsError(
+        'Demasiados pedidos con este correo. Intenta de nuevo en una hora.',
+      );
+    }
+
     const { itemsData, subtotal, total } = await this.resolveOrderItems.execute(
       cmd.items,
       !!userId,
