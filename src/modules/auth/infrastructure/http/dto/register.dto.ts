@@ -1,3 +1,4 @@
+import { NormalizeEmail } from '../../../../../shared/infrastructure/http/dto/normalize-email.transform';
 import type { RegisterCommand } from '../../../application/auth.service';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
@@ -26,6 +27,7 @@ export class RegisterDto implements RegisterCommand {
 
   @ApiPropertyOptional({ example: 'user@example.com' })
   @IsOptional()
+  @NormalizeEmail()
   @IsEmail()
   @MaxLength(150)
   email?: string;

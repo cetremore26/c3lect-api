@@ -109,11 +109,24 @@ export class AuthService {
     });
   }
 
+  private hashFicticioPromise: Promise<string> | null = null;
+
+  private hashFicticio(): Promise<string> {
+    this.hashFicticioPromise ??= this.hasher.hash(
+      randomBytes(16).toString('hex'),
+    );
+    return this.hashFicticioPromise;
+  }
+
   async login(cmd: { email: string; password: string }) {
     const GENERIC = 'Credenciales incorrectas.';
 
     const user = await this.identity.findUserByEmail(cmd.email);
-    if (!user || !user.passwordHash) throw new UnauthorizedError(GENERIC);
+    if (!user || !user.passwordHash) {
+      // Tiempo constante: hace el mismo trabajo que con un usuario real.
+      await this.hasher.verify(await this.hashFicticio(), cmd.password);
+      throw new UnauthorizedError(GENERIC);
+    }
 
     const valid = await this.hasher.verify(user.passwordHash, cmd.password);
     if (!valid) throw new UnauthorizedError(GENERIC);

@@ -180,7 +180,10 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
 
   async linkGuestOrders(email: string, userId: string): Promise<void> {
     await this.db.client.order.updateMany({
-      where: { userId: null, shippingInfo: { email } },
+      where: {
+        userId: null,
+        shippingInfo: { email: { equals: email, mode: 'insensitive' } },
+      },
       data: { userId },
     });
   }

@@ -240,3 +240,14 @@ describe('register', () => {
     expect(events.of(UsuarioRegistrado)).toHaveLength(1);
   });
 });
+
+describe('login', () => {
+  it('con usuario inexistente ejecuta igual un argon2 y responde 401', async () => {
+    const { service, identity, hasher } = makeService();
+    identity.findUserByEmail.mockResolvedValue(null);
+    await expect(
+      service.login({ email: 'no@x.com', password: 'p' }),
+    ).rejects.toThrow(UnauthorizedError);
+    expect(hasher.verify).toHaveBeenCalledTimes(1);
+  });
+});
