@@ -249,7 +249,8 @@ export class AuthService {
     if (!record)
       throw new UnauthorizedError('Refresh token inválido o expirado.');
 
-    await this.identity.deleteRefreshToken(record.id);
+    if (!(await this.identity.consumeRefreshToken(record.id)))
+      throw new UnauthorizedError('Refresh token inválido o expirado.');
 
     return this.generateTokens(record.user);
   }

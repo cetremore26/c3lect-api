@@ -168,3 +168,44 @@ describeDb('PrismaIdentityRepository (reset de contraseña)', () => {
     expect(await repo.findValidPasswordReset(id)).toBeNull();
   });
 });
+
+describeDb('PrismaIdentityRepository (refresh tokens)', () => {
+  let prisma: PrismaService;
+  let repo: PrismaIdentityRepository;
+  let userId: string;
+
+  beforeAll(async () => {
+    process.env.DATABASE_URL = url;
+    prisma = new PrismaService();
+    await prisma.$connect();
+    repo = new PrismaIdentityRepository(new PrismaTransactionHost(prisma));
+    const user = await prisma.user.create({
+      data: {
+        email: `refresh-${randomUUID()}@test.local`,
+        nombre: 'Refresh',
+        passwordHash: 'h',
+      },
+    });
+    userId = user.id;
+  });
+
+  afterAll(async () => {
+    await prisma.user.delete({ where: { id: userId } });
+    await prisma.$disconnect();
+  });
+
+  it('consumeRefreshToken concurrente: solo una llamada gana', async () => {
+    const tokenHash = `h-${randomUUID()}`;
+    await repo.saveRefreshToken(userId, tokenHash, enUnRato());
+    const record = await repo.findValidRefreshToken(tokenHash);
+    expect(record).not.toBeNull();
+    const id = record!.id;
+    const r = await Promise.all([
+      repo.consumeRefreshToken(id),
+      repo.consumeRefreshToken(id),
+      repo.consumeRefreshToken(id),
+    ]);
+    expect(r.filter(Boolean)).toHaveLength(1);
+    expect(await repo.findValidRefreshToken(tokenHash)).toBeNull();
+  });
+});

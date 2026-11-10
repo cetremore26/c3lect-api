@@ -43,7 +43,7 @@ export interface IdentityRepositoryPort {
   findValidRefreshToken(
     tokenHash: string,
   ): Promise<{ id: string; user: Credenciales } | null>;
-  deleteRefreshToken(id: string): Promise<void>;
+  consumeRefreshToken(id: string): Promise<boolean>;
   deleteRefreshTokensOf(userId: string): Promise<void>;
 
   countOtpsSince(

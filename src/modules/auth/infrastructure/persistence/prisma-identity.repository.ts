@@ -67,8 +67,11 @@ export class PrismaIdentityRepository implements IdentityRepositoryPort {
     return record;
   }
 
-  async deleteRefreshToken(id: string): Promise<void> {
-    await this.db.client.refreshToken.delete({ where: { id } });
+  async consumeRefreshToken(id: string): Promise<boolean> {
+    const { count } = await this.db.client.refreshToken.deleteMany({
+      where: { id },
+    });
+    return count === 1;
   }
 
   async deleteRefreshTokensOf(userId: string): Promise<void> {

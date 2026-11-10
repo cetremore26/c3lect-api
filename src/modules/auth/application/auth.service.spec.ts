@@ -493,3 +493,19 @@ describe('restablecer contraseña', () => {
     expect(identity.deleteRefreshTokensOf).toHaveBeenCalledWith('u-1');
   });
 });
+
+describe('refreshTokens', () => {
+  it('si otro request ya consumió el token → 401', async () => {
+    const { service, identity } = makeService();
+    Object.assign(identity, {
+      findValidRefreshToken: jest
+        .fn()
+        .mockResolvedValue({ id: 'rt-1', user: usuario }),
+      consumeRefreshToken: jest.fn().mockResolvedValue(false),
+    });
+    await expect(
+      service.refreshTokens({ refreshToken: 'abc' }),
+    ).rejects.toThrow('Refresh token inválido o expirado.');
+    expect(identity.saveRefreshToken).not.toHaveBeenCalled();
+  });
+});
