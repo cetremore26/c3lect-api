@@ -1,8 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   BusinessRuleViolation,
+  ForbiddenError,
   NotFoundError,
 } from '../../../../shared/domain/domain-error';
+import { puedeVerPedido } from './get-payment.use-case';
+import type { Solicitante } from './get-payment.use-case';
 import { EstadoPago } from '../../domain/payment-status';
 import { ORDERS } from '../ports/orders.port';
 import type { OrdersPort } from '../ports/orders.port';
@@ -20,9 +23,12 @@ export class CreatePaymentUseCase {
     private readonly payments: PaymentRepositoryPort,
   ) {}
 
-  async execute(cmd: { orderId: string }, userId?: string) {
+  async execute(cmd: { orderId: string }, quien: Solicitante) {
     const order = await this.orders.findForPayment(cmd.orderId);
     if (!order) throw new NotFoundError('Pedido no encontrado.');
+    if (!puedeVerPedido(order, quien)) {
+      throw new ForbiddenError('No tienes permiso sobre este pedido.');
+    }
     if (!order.pendiente) {
       throw new BusinessRuleViolation(
         'El pedido ya no está pendiente y no puede procesarse.',
@@ -43,7 +49,7 @@ export class CreatePaymentUseCase {
     const payment = await this.payments.create({
       orderId: order.id,
       orderNumber: order.orderNumber,
-      userId: userId ?? null,
+      userId: order.userId,
       estado: EstadoPago.PENDIENTE,
       preferenceId: result.preferenceId ?? null,
       checkoutUrl: result.checkoutUrl,

@@ -57,7 +57,10 @@ export class PaymentsController {
     @Body() dto: CreatePaymentDto,
     @CurrentUser() user?: { id: string; rol: string },
   ) {
-    return this.createPaymentUseCase.execute(dto, user?.id);
+    return this.createPaymentUseCase.execute(dto, {
+      userId: user?.id,
+      rol: user?.rol,
+    });
   }
 
   @Post('create-pending')
@@ -110,7 +113,13 @@ export class PaymentsController {
   @ApiNotFoundResponse({
     description: 'No hay registro de pago para este pedido',
   })
-  getPayment(@Param('orderId') orderId: string) {
-    return this.getPaymentUseCase.execute(orderId);
+  getPayment(
+    @Param('orderId') orderId: string,
+    @CurrentUser() user: { id: string; rol: string },
+  ) {
+    return this.getPaymentUseCase.execute(orderId, {
+      userId: user.id,
+      rol: user.rol,
+    });
   }
 }

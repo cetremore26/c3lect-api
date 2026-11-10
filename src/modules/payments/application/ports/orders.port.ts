@@ -21,6 +21,7 @@ export interface LineaCotizada {
 export interface PedidoParaPago {
   id: string;
   orderNumber: string;
+  userId: string | null;
   /** Solo un pedido PENDIENTE puede pagarse, confirmarse o cancelarse por pago. */
   pendiente: boolean;
   total: number;

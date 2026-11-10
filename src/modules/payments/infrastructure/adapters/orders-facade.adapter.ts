@@ -50,6 +50,7 @@ function toPedidoParaPago(order: OrderSnapshot): PedidoParaPago {
   return {
     id: order.id,
     orderNumber: order.orderNumber,
+    userId: order.userId,
     pendiente: order.status === EstadoPedido.PENDIENTE,
     total: order.total,
     fbp: order.fbp,
