@@ -20,6 +20,7 @@ const usuario = {
 function makeService() {
   const identity = {
     findUserByEmail: jest.fn(),
+    findUserById: jest.fn(),
     saveRefreshToken: jest.fn(),
     createUser: jest.fn(),
     countOtpsSince: jest.fn(),
@@ -249,5 +250,126 @@ describe('login', () => {
       service.login({ email: 'no@x.com', password: 'p' }),
     ).rejects.toThrow(UnauthorizedError);
     expect(hasher.verify).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('segundo factor del admin', () => {
+  const admin = {
+    id: 'admin-1',
+    email: 'admin@x.com',
+    nombre: 'Root',
+    rol: 'ADMIN',
+    passwordHash: 'H:clave',
+  };
+  const vivo = { id: 'otp-9', hash: 'H:123456', intentos: 0 };
+
+  function otpOk(identity: ReturnType<typeof makeService>['identity']) {
+    identity.findLiveOtp.mockResolvedValue(vivo);
+    identity.reserveOtpAttempt.mockResolvedValue(true);
+    identity.consumeOtp.mockResolvedValue(true);
+  }
+
+  it('login de ADMIN no devuelve tokens: emite OTP ADMIN_2FA y un challengeToken', async () => {
+    const { service, identity, tokens, purposeTokens } = makeService();
+    identity.findUserByEmail.mockResolvedValue(admin);
+    identity.countOtpsSince.mockResolvedValue(0);
+    purposeTokens.firmar.mockReturnValue('chal');
+    const r = await service.login({ email: 'admin@x.com', password: 'clave' });
+    expect(r).toEqual({ requiresSecondFactor: true, challengeToken: 'chal' });
+    expect(identity.saveOtp).toHaveBeenCalledWith(
+      expect.objectContaining({ proposito: 'ADMIN_2FA' }),
+    );
+    expect(purposeTokens.firmar).toHaveBeenCalledWith(
+      'admin-2fa',
+      { sub: 'admin-1' },
+      600,
+    );
+    expect(tokens.issue).not.toHaveBeenCalled();
+  });
+
+  it('login de ADMIN con emisión agotada devuelve igual el challengeToken', async () => {
+    const { service, identity, purposeTokens } = makeService();
+    identity.findUserByEmail.mockResolvedValue(admin);
+    identity.countOtpsSince.mockResolvedValue(3);
+    purposeTokens.firmar.mockReturnValue('chal');
+    const r = await service.login({ email: 'admin@x.com', password: 'clave' });
+    expect(r).toEqual({ requiresSecondFactor: true, challengeToken: 'chal' });
+    expect(identity.saveOtp).not.toHaveBeenCalled();
+  });
+
+  it('login de CLIENTE sigue devolviendo tokens', async () => {
+    const { service, identity } = makeService();
+    identity.findUserByEmail.mockResolvedValue({
+      ...usuario,
+      passwordHash: 'H:clave',
+    });
+    const r = await service.login({ email: 'a@x.com', password: 'clave' });
+    expect(r).toEqual(expect.objectContaining({ accessToken: 'access' }));
+  });
+
+  it('loginSecondFactor con código correcto devuelve la sesión', async () => {
+    const { service, identity, purposeTokens } = makeService();
+    purposeTokens.verificar.mockReturnValue({ sub: 'admin-1' });
+    identity.findUserById.mockResolvedValue(admin);
+    otpOk(identity);
+    const r = await service.loginSecondFactor({
+      challengeToken: 'chal',
+      code: '123456',
+    });
+    expect(purposeTokens.verificar).toHaveBeenCalledWith('admin-2fa', 'chal');
+    expect(identity.findLiveOtp).toHaveBeenCalledWith(
+      'admin@x.com',
+      'ADMIN_2FA',
+    );
+    expect(r).toEqual(
+      expect.objectContaining({
+        accessToken: 'access',
+        user: expect.objectContaining({ id: 'admin-1' }),
+      }),
+    );
+  });
+
+  it('loginSecondFactor busca solo códigos ADMIN_2FA (un LOGIN no sirve)', async () => {
+    const { service, identity, purposeTokens } = makeService();
+    purposeTokens.verificar.mockReturnValue({ sub: 'admin-1' });
+    identity.findUserById.mockResolvedValue(admin);
+    identity.findLiveOtp.mockImplementation((_e: string, p: string) =>
+      Promise.resolve(p === 'LOGIN' ? vivo : null),
+    );
+    await expect(
+      service.loginSecondFactor({ challengeToken: 'chal', code: '123456' }),
+    ).rejects.toThrow('Código inválido o expirado.');
+    expect(identity.findLiveOtp).toHaveBeenCalledWith(
+      'admin@x.com',
+      'ADMIN_2FA',
+    );
+  });
+
+  it('loginSecondFactor con challengeToken inválido → 401', async () => {
+    const { service, purposeTokens } = makeService();
+    purposeTokens.verificar.mockReturnValue(null);
+    await expect(
+      service.loginSecondFactor({ challengeToken: 'x', code: '123456' }),
+    ).rejects.toThrow(UnauthorizedError);
+  });
+
+  it('loginSecondFactor si el usuario ya no es ADMIN → 401', async () => {
+    const { service, identity, purposeTokens } = makeService();
+    purposeTokens.verificar.mockReturnValue({ sub: 'u-1' });
+    identity.findUserById.mockResolvedValue(usuario);
+    await expect(
+      service.loginSecondFactor({ challengeToken: 'chal', code: '123456' }),
+    ).rejects.toThrow('Código inválido o expirado.');
+  });
+
+  it('verifyOtp de un ADMIN responde el 401 genérico', async () => {
+    const { service, identity, tokens } = makeService();
+    otpOk(identity);
+    identity.findUserByEmail.mockResolvedValue(admin);
+    await expect(
+      service.verifyOtp({ email: 'admin@x.com', code: '123456' }),
+    ).rejects.toThrow('Código inválido o expirado.');
+    expect(identity.consumeOtp).toHaveBeenCalled();
+    expect(tokens.issue).not.toHaveBeenCalled();
   });
 });

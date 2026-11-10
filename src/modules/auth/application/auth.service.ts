@@ -131,6 +131,32 @@ export class AuthService {
     const valid = await this.hasher.verify(user.passwordHash, cmd.password);
     if (!valid) throw new UnauthorizedError(GENERIC);
 
+    if (user.rol === 'ADMIN') {
+      // Si la emisión está agotada no se emite otro código: el admin puede
+      // usar el que ya se le envió.
+      await this.emitirOtp(user.email, PropositoOtp.ADMIN_2FA);
+      const challengeToken = this.purposeTokens.firmar(
+        'admin-2fa',
+        { sub: user.id },
+        10 * 60,
+      );
+      return { requiresSecondFactor: true as const, challengeToken };
+    }
+
+    const tokens = await this.generateTokens(user);
+    return { ...tokens, user: this.publicUser(user) };
+  }
+
+  async loginSecondFactor(cmd: { challengeToken: string; code: string }) {
+    const invalido = () => new UnauthorizedError('Código inválido o expirado.');
+
+    const datos = this.purposeTokens.verificar('admin-2fa', cmd.challengeToken);
+    if (!datos?.sub) throw invalido();
+    const user = await this.identity.findUserById(datos.sub);
+    if (!user || user.rol !== 'ADMIN') throw invalido();
+
+    await this.verificarOtp(user.email, PropositoOtp.ADMIN_2FA, cmd.code);
+
     const tokens = await this.generateTokens(user);
     return { ...tokens, user: this.publicUser(user) };
   }
@@ -151,6 +177,11 @@ export class AuthService {
         15 * 60,
       );
       return { requiresRegistration: true, registrationToken };
+    }
+
+    // Un admin no entra solo con OTP: debe pasar por contraseña + 2FA.
+    if (user.rol === 'ADMIN') {
+      throw new UnauthorizedError('Código inválido o expirado.');
     }
 
     const tokens = await this.generateTokens(user);
