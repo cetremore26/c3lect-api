@@ -5,6 +5,7 @@ import type { EventBusPort } from '../../../shared/application/ports/event-bus.p
 import { UNIT_OF_WORK } from '../../../shared/application/ports/unit-of-work.port';
 import type { UnitOfWorkPort } from '../../../shared/application/ports/unit-of-work.port';
 import {
+  BusinessRuleViolation,
   ConflictError,
   UnauthorizedError,
 } from '../../../shared/domain/domain-error';
@@ -26,11 +27,13 @@ import {
   ACCESS_TOKEN_ISSUER,
   AUTH_SETTINGS,
   PASSWORD_HASHER,
+  PURPOSE_TOKENS,
 } from './ports/auth-services.port';
 import type {
   AccessTokenIssuerPort,
   AuthSettingsPort,
   PasswordHasherPort,
+  PurposeTokenPort,
 } from './ports/auth-services.port';
 import { IDENTITY_REPOSITORY } from './ports/identity-repository.port';
 import type {
@@ -39,7 +42,8 @@ import type {
 } from './ports/identity-repository.port';
 
 export interface RegisterCommand {
-  email: string;
+  registrationToken?: string;
+  email?: string;
   password: string;
   nombre: string;
   telefono?: string;
@@ -59,20 +63,34 @@ export class AuthService {
     @Inject(AUTH_SETTINGS) private readonly settings: AuthSettingsPort,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWorkPort,
     @Inject(EVENT_BUS) private readonly events: EventBusPort,
+    @Inject(PURPOSE_TOKENS) private readonly purposeTokens: PurposeTokenPort,
   ) {}
 
   // El correo de bienvenida lo manda notificaciones y la vinculación de
   // pedidos hechos como invitado la hace orders, ambos reaccionando a
   // UsuarioRegistrado. La vinculación corre en esta misma transacción.
   async register(cmd: RegisterCommand) {
-    const existing = await this.identity.findUserByEmail(cmd.email);
+    const verificado = cmd.registrationToken
+      ? this.purposeTokens.verificar('registro', cmd.registrationToken)
+      : null;
+    if (!verificado?.email) {
+      throw new UnauthorizedError('Verifica tu correo para crear la cuenta.');
+    }
+    const email = verificado.email;
+    if (cmd.email && cmd.email.toLowerCase() !== email.toLowerCase()) {
+      throw new BusinessRuleViolation(
+        'El correo no coincide con el verificado.',
+      );
+    }
+
+    const existing = await this.identity.findUserByEmail(email);
     if (existing) throw new ConflictError('El correo ya está registrado.');
 
     const passwordHash = await this.hasher.hash(cmd.password);
 
     return this.uow.run(async () => {
       const user = await this.identity.createUser({
-        email: cmd.email,
+        email,
         passwordHash,
         nombre: cmd.nombre,
         telefono: cmd.telefono,
@@ -113,7 +131,14 @@ export class AuthService {
     await this.verificarOtp(cmd.email, PropositoOtp.LOGIN, cmd.code);
 
     const user = await this.identity.findUserByEmail(cmd.email);
-    if (!user) return { requiresRegistration: true };
+    if (!user) {
+      const registrationToken = this.purposeTokens.firmar(
+        'registro',
+        { email: cmd.email },
+        15 * 60,
+      );
+      return { requiresRegistration: true, registrationToken };
+    }
 
     const tokens = await this.generateTokens(user);
     return { ...tokens, user: this.publicUser(user) };

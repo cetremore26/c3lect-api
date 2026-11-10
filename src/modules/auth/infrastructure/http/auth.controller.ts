@@ -35,6 +35,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Registro con email y contraseña' })
   @ApiCreatedResponse({
     description: 'Usuario creado — retorna accessToken y refreshToken',

@@ -1,6 +1,12 @@
-import { UnauthorizedError } from '../../../shared/domain/domain-error';
+import {
+  BusinessRuleViolation,
+  UnauthorizedError,
+} from '../../../shared/domain/domain-error';
 import { fakeEventBus, fakeUnitOfWork } from '../../../shared/testing/fakes';
-import { CodigoDeAccesoSolicitado } from '../domain/identity-events';
+import {
+  CodigoDeAccesoSolicitado,
+  UsuarioRegistrado,
+} from '../domain/identity-events';
 import { AuthService } from './auth.service';
 
 const usuario = {
@@ -15,6 +21,7 @@ function makeService() {
   const identity = {
     findUserByEmail: jest.fn(),
     saveRefreshToken: jest.fn(),
+    createUser: jest.fn(),
     countOtpsSince: jest.fn(),
     invalidateOtps: jest.fn(),
     saveOtp: jest.fn(),
@@ -29,6 +36,10 @@ function makeService() {
   const tokens = { issue: jest.fn(() => 'access') };
   const settings = { refreshTokenTtl: jest.fn(() => '7d') };
   const events = fakeEventBus();
+  const purposeTokens = {
+    firmar: jest.fn(() => 'tok'),
+    verificar: jest.fn(),
+  };
   const service = new AuthService(
     identity as never,
     hasher,
@@ -36,8 +47,9 @@ function makeService() {
     settings as never,
     fakeUnitOfWork(),
     events as never,
+    purposeTokens,
   );
-  return { service, identity, hasher, tokens, events };
+  return { service, identity, hasher, tokens, events, purposeTokens };
 }
 
 describe('requestOtp', () => {
@@ -151,5 +163,80 @@ describe('verifyOtp', () => {
         user: expect.objectContaining({ id: 'u-1' }),
       }),
     );
+  });
+});
+
+describe('verifyOtp sin cuenta', () => {
+  it('devuelve registrationToken de 15 min', async () => {
+    const { service, identity, purposeTokens } = makeService();
+    identity.findLiveOtp.mockResolvedValue({
+      id: 'otp-1',
+      hash: 'H:123456',
+      intentos: 0,
+    });
+    identity.reserveOtpAttempt.mockResolvedValue(true);
+    identity.consumeOtp.mockResolvedValue(true);
+    identity.findUserByEmail.mockResolvedValue(null);
+    const r = await service.verifyOtp({ email: 'a@x.com', code: '123456' });
+    expect(r).toEqual({ requiresRegistration: true, registrationToken: 'tok' });
+    expect(purposeTokens.firmar).toHaveBeenCalledWith(
+      'registro',
+      { email: 'a@x.com' },
+      900,
+    );
+  });
+});
+
+describe('register', () => {
+  const base = { password: 'Password1!', nombre: 'Ana' };
+
+  function listo() {
+    const ctx = makeService();
+    ctx.identity.findUserByEmail.mockResolvedValue(null);
+    ctx.identity.createUser.mockResolvedValue(usuario);
+    ctx.purposeTokens.verificar.mockReturnValue({ email: 'a@x.com' });
+    return ctx;
+  }
+
+  it('sin token → 401', async () => {
+    const { service } = listo();
+    await expect(service.register({ ...base })).rejects.toBeInstanceOf(
+      UnauthorizedError,
+    );
+  });
+
+  it('con token inválido → 401', async () => {
+    const { service, purposeTokens } = listo();
+    purposeTokens.verificar.mockReturnValue(null);
+    await expect(
+      service.register({ ...base, registrationToken: 'mal' }),
+    ).rejects.toBeInstanceOf(UnauthorizedError);
+  });
+
+  it('usa el email del token', async () => {
+    const { service, identity, purposeTokens } = listo();
+    await service.register({ ...base, registrationToken: 'tok' });
+    expect(purposeTokens.verificar).toHaveBeenCalledWith('registro', 'tok');
+    expect(identity.createUser).toHaveBeenCalledWith(
+      expect.objectContaining({ email: 'a@x.com' }),
+    );
+  });
+
+  it('con otro email en el body → 400', async () => {
+    const { service, identity } = listo();
+    await expect(
+      service.register({
+        ...base,
+        registrationToken: 'tok',
+        email: 'otro@x.com',
+      }),
+    ).rejects.toBeInstanceOf(BusinessRuleViolation);
+    expect(identity.createUser).not.toHaveBeenCalled();
+  });
+
+  it('publica UsuarioRegistrado (vincula pedidos)', async () => {
+    const { service, events } = listo();
+    await service.register({ ...base, registrationToken: 'tok' });
+    expect(events.of(UsuarioRegistrado)).toHaveLength(1);
   });
 });
