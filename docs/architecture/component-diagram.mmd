@@ -1,0 +1,63 @@
+flowchart LR
+    Client["Bóveda C3LECT<br/>navegador / frontend externo"]
+    API["C3LECT API<br/>NestJS controllers + DTOs"]
+
+    subgraph Identity["Contexto de identidad"]
+        Auth["Auth / Users / Account"]
+    end
+    subgraph Commerce["Contextos comerciales"]
+        Catalog["Products / Promotions / Brands"]
+        Orders["Orders"]
+        Payments["Payments"]
+        Operations["Inventory / Prices / Purchases / Sales / Expenses"]
+        Reviews["Reviews"]
+        Admin["Metrics / Audit"]
+    end
+    Shared["Shared kernel<br/>Prisma · UoW · Event bus · guards"]
+    Notifications["Notifications<br/>event subscribers"]
+    Meta["Meta conversions<br/>event subscriber"]
+
+    DB[("PostgreSQL<br/>Prisma models + public views")]
+    MercadoPago["MercadoPago"]
+    Resend["Resend"]
+    MetaCAPI["Meta Conversions API"]
+
+    Client --> API
+    API --> Auth
+    API --> Catalog
+    API --> Orders
+    API --> Payments
+    API --> Operations
+    API --> Reviews
+    API --> Admin
+    Auth --> Shared
+    Catalog --> Shared
+    Orders --> Catalog
+    Orders --> Shared
+    Payments --> Orders
+    Payments --> Shared
+    Operations --> Shared
+    Reviews --> Orders
+    Reviews --> Auth
+    Admin --> Shared
+    Shared --> DB
+    Payments --> MercadoPago
+    Notifications --> Resend
+    Meta --> MetaCAPI
+    Orders -. "PedidoConfirmado / estados" .-> Operations
+    Orders -. "PedidoCreado" .-> Notifications
+    Payments -. "PagoAprobado" .-> Notifications
+    Payments -. "PagoAprobado" .-> Meta
+    Operations -. "VentaManualRegistrada" .-> Meta
+    Auth -. "UsuarioRegistrado / OTP / reset" .-> Notifications
+
+    classDef client fill:#102a43,stroke:#68e5df,color:#f8fbff;
+    classDef api fill:#183b56,stroke:#68e5df,color:#f8fbff;
+    classDef module fill:#191d3a,stroke:#a893ff,color:#f8fbff;
+    classDef shared fill:#2c2146,stroke:#ffb76f,color:#f8fbff;
+    classDef external fill:#2d1b2e,stroke:#ff7ab6,color:#f8fbff;
+    class Client client;
+    class API api;
+    class Auth,Catalog,Orders,Payments,Operations,Reviews,Admin,Notifications,Meta module;
+    class Shared,DB shared;
+    class MercadoPago,Resend,MetaCAPI external;

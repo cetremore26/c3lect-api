@@ -1,0 +1,26 @@
+<mxfile host="app.diagrams.net" modified="2026-11-11T00:00:00.000Z" agent="Codex" version="24.7.17" type="device">
+  <diagram id="c3lect-current" name="CURRENT reported deployment">
+    <mxGraphModel dx="1600" dy="1000" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1900" pageHeight="1200" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="currentExternal" value="External client / providers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=none;strokeColor=#a05a7f;dashed=1;verticalAlign=top;align=left;spacingTop=8;spacingLeft=12;fontStyle=1;" vertex="1" parent="1"><mxGeometry x="30" y="70" width="280" height="780" as="geometry" /></mxCell>
+        <mxCell id="currentHosts" value="CURRENT / REPORTED HOSTING (from README and ARCHITECTURE.md)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#08111d;strokeColor=#ffb76f;dashed=1;verticalAlign=top;align=left;spacingTop=10;spacingLeft=14;fontStyle=1;fontSize=16;" vertex="1" parent="1"><mxGeometry x="360" y="40" width="1460" height="860" as="geometry" /></mxCell>
+        <mxCell id="front" value="Bóveda C3LECT&#xa;GitHub Pages frontend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#102a43;strokeColor=#68e5df;fontColor=#f8fbff;fontSize=14;" vertex="1" parent="1"><mxGeometry x="80" y="240" width="180" height="75" as="geometry" /></mxCell>
+        <mxCell id="mpc" value="MercadoPago" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d1b2e;strokeColor=#ff7ab6;fontColor=#f8fbff;fontSize=14;" vertex="1" parent="1"><mxGeometry x="80" y="440" width="180" height="68" as="geometry" /></mxCell>
+        <mxCell id="resc" value="Resend" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d1b2e;strokeColor=#ff7ab6;fontColor=#f8fbff;fontSize=14;" vertex="1" parent="1"><mxGeometry x="80" y="565" width="180" height="68" as="geometry" /></mxCell>
+        <mxCell id="metac" value="Meta CAPI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2d1b2e;strokeColor=#ff7ab6;fontColor=#f8fbff;fontSize=14;" vertex="1" parent="1"><mxGeometry x="80" y="690" width="180" height="68" as="geometry" /></mxCell>
+        <mxCell id="render" value="Render&#xa;C3LECT API&#xa;reported public host" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#183b56;strokeColor=#68e5df;fontColor=#f8fbff;fontSize=15;" vertex="1" parent="1"><mxGeometry x="570" y="285" width="250" height="110" as="geometry" /></mxCell>
+        <mxCell id="supabase" value="Supabase / PostgreSQL&#xa;private tables + public views" style="shape=cylinder;whiteSpace=wrap;html=1;fillColor=#2c2146;strokeColor=#ffb76f;fontColor=#f8fbff;fontSize=14;" vertex="1" parent="1"><mxGeometry x="1220" y="285" width="280" height="120" as="geometry" /></mxCell>
+        <mxCell id="swagger" value="Swagger / OpenAPI&#xa;/api/docs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#191d3a;strokeColor=#a893ff;fontColor=#f8fbff;fontSize=14;" vertex="1" parent="1"><mxGeometry x="570" y="540" width="250" height="90" as="geometry" /></mxCell>
+        <mxCell id="note2" value="The repository reports these hosts and integrations; no remote availability check was performed." style="shape=note;whiteSpace=wrap;html=1;fillColor=#2d1b2e;strokeColor=#ff7ab6;fontColor=#f8fbff;fontSize=13;" vertex="1" parent="1"><mxGeometry x="1000" y="610" width="560" height="80" as="geometry" /></mxCell>
+        <mxCell id="ce1" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#68e5df;" edge="1" parent="1" source="front" target="render"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce2" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#68e5df;" edge="1" parent="1" source="render" target="supabase"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce3" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#a893ff;" edge="1" parent="1" source="render" target="swagger"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce4" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#ff7ab6;" edge="1" parent="1" source="mpc" target="render"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce5" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#ff7ab6;" edge="1" parent="1" source="render" target="resc"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="ce6" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#ff7ab6;" edge="1" parent="1" source="render" target="metac"><mxGeometry relative="1" as="geometry" /></mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
