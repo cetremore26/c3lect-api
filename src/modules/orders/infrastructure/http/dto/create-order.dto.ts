@@ -7,6 +7,7 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
@@ -53,4 +54,14 @@ export class CreateOrderDto implements CreateOrderCommand {
   @IsString()
   @MaxLength(255)
   fbc?: string;
+
+  // La genera el checkout al montarse: si el cliente reintenta (timeout,
+  // doble clic) con la misma clave, recibe el pedido ya creado.
+  @ApiProperty({
+    required: false,
+    description: 'UUID del intento de checkout, para no duplicar el pedido',
+  })
+  @IsOptional()
+  @IsUUID()
+  idempotencyKey?: string;
 }

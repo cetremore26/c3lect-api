@@ -120,19 +120,47 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
     });
   }
 
-  create(data: NewOrderData): Promise<CreatedOrder> {
-    return this.db.client.order.create({
-      data: {
-        ...this.orderData(data),
-        statusHistory: {
-          create: {
-            statusNuevo: EstadoPedido.PENDIENTE,
-            changedBy: data.userId,
-          },
-        },
-      },
+  findByIdempotencyKey(key: string): Promise<CreatedOrder | null> {
+    return this.db.client.order.findUnique({
+      where: { idempotencyKey: key },
       include: createInclude,
     });
+  }
+
+  // No debe correr dentro de una transacción: el P2002 de la carrera la
+  // abortaría y la lectura del pedido ganador fallaría.
+  async create(
+    data: NewOrderData,
+  ): Promise<{ order: CreatedOrder; nuevo: boolean }> {
+    try {
+      const order = await this.db.client.order.create({
+        data: {
+          ...this.orderData(data),
+          statusHistory: {
+            create: {
+              statusNuevo: EstadoPedido.PENDIENTE,
+              changedBy: data.userId,
+            },
+          },
+        },
+        include: createInclude,
+      });
+      return { order, nuevo: true };
+    } catch (e) {
+      // Dos peticiones con la misma clave a la vez: la unique de
+      // idempotency_key deja pasar una sola. No se mira meta.target (con el
+      // adaptador pg su forma varía): si hay un pedido con la clave, la
+      // colisión fue esa.
+      if (
+        data.idempotencyKey &&
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        const existente = await this.findByIdempotencyKey(data.idempotencyKey);
+        if (existente) return { order: existente, nuevo: false };
+      }
+      throw e;
+    }
   }
 
   createConfirmed(
@@ -246,6 +274,7 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
       paymentMethod: data.paymentMethod,
       fbp: data.fbp,
       fbc: data.fbc,
+      idempotencyKey: data.idempotencyKey ?? null,
       items: { create: data.items },
       shippingInfo: { create: data.shippingInfo },
     };

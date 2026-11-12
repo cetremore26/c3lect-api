@@ -88,6 +88,8 @@ export interface NewOrderData {
   fbc: string | null;
   items: OrderItemData[];
   shippingInfo: ShippingData;
+  /** Clave del checkout; dos pedidos no pueden compartirla. */
+  idempotencyKey?: string | null;
 }
 
 /** Un producto que el cliente ya tiene en sus manos (pedido ENTREGADO). */
@@ -123,7 +125,14 @@ export interface OrderRepositoryPort {
 
   findByIdForPayment(id: string): Promise<OrderSnapshot | null>;
 
-  create(data: NewOrderData): Promise<CreatedOrder>;
+  findByIdempotencyKey(key: string): Promise<CreatedOrder | null>;
+
+  /**
+   * Crea el pedido en PENDIENTE. Si otra petición ya creó uno con la misma
+   * `idempotencyKey` (carrera), devuelve ese con `nuevo: false` en vez de
+   * fallar o duplicarlo.
+   */
+  create(data: NewOrderData): Promise<{ order: CreatedOrder; nuevo: boolean }>;
 
   /** Crea el pedido directamente en CONFIRMADO, con su historial. */
   createConfirmed(data: NewOrderData, changedBy: string): Promise<CreatedOrder>;

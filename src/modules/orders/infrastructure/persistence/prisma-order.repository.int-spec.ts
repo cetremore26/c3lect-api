@@ -63,7 +63,7 @@ describeDb('PrismaOrderRepository', () => {
   });
 
   it('dos transiciones concurrentes desde PENDIENTE: solo una aplica', async () => {
-    const order = await repo.create(nuevoPedido());
+    const { order } = await repo.create(nuevoPedido());
     const transicion = (statusNuevo: EstadoPedido) =>
       host.run(() =>
         repo.transitionStatus({
@@ -93,7 +93,7 @@ describeDb('PrismaOrderRepository', () => {
   });
 
   it('con estado anterior desactualizado devuelve null y no escribe historial', async () => {
-    const pedido = await repo.create(nuevoPedido());
+    const { order: pedido } = await repo.create(nuevoPedido());
 
     const r = await host.run(() =>
       repo.transitionStatus({
@@ -108,5 +108,32 @@ describeDb('PrismaOrderRepository', () => {
     expect(
       await prisma.orderStatusHistory.count({ where: { orderId: pedido.id } }),
     ).toBe(1);
+  });
+
+  it('creaciones concurrentes con la misma clave: un solo pedido', async () => {
+    const key = randomUUID();
+    const [a, b] = await Promise.all([
+      repo.create(nuevoPedido({ idempotencyKey: key })),
+      repo.create(nuevoPedido({ idempotencyKey: key })),
+    ]);
+    expect([a.nuevo, b.nuevo].sort()).toEqual([false, true]);
+    expect(a.order.id).toBe(b.order.id);
+    expect(await prisma.order.count({ where: { idempotencyKey: key } })).toBe(
+      1,
+    );
+  });
+
+  it('findByIdempotencyKey devuelve el pedido con items, envío e historial', async () => {
+    const key = randomUUID();
+    const { order } = await repo.create(nuevoPedido({ idempotencyKey: key }));
+    const encontrado = await repo.findByIdempotencyKey(key);
+    expect(encontrado?.id).toBe(order.id);
+    expect(encontrado?.items).toHaveLength(1);
+    expect(encontrado?.shippingInfo?.email).toBe('cliente@test.local');
+    expect(encontrado?.statusHistory).toHaveLength(1);
+  });
+
+  it('findByIdempotencyKey con una clave desconocida devuelve null', async () => {
+    expect(await repo.findByIdempotencyKey(randomUUID())).toBeNull();
   });
 });
