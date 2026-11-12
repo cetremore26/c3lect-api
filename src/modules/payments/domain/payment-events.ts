@@ -32,7 +32,6 @@ export class PagoAprobado implements DomainEvent {
       cliente: ClientePago | null;
       fbp: string | null;
       fbc: string | null;
-      comprobantePdf: Buffer;
     },
   ) {}
 }

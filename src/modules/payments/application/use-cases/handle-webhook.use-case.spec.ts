@@ -43,7 +43,6 @@ function makeUseCase({ sinSecreto = false } = {}) {
     transicionar: jest.fn().mockResolvedValue(true),
     linkToOrder: jest.fn().mockResolvedValue(undefined),
   };
-  const voucher = { generate: jest.fn().mockResolvedValue(Buffer.from('pdf')) };
   const settings = {
     webhookSecret: jest.fn(() => {
       if (secret === undefined) throw new Error('Falta MP_WEBHOOK_SECRET');
@@ -56,12 +55,11 @@ function makeUseCase({ sinSecreto = false } = {}) {
     orders,
     gateway,
     payments,
-    voucher,
     settings,
     events,
   );
 
-  return { useCase, orders, gateway, payments, voucher, events };
+  return { useCase, orders, gateway, payments, events };
 }
 
 const shippingInfo = {
@@ -257,14 +255,13 @@ describe('HandleWebhookUseCase', () => {
       );
     });
 
-    it('publica PagoAprobado con el comprobante, los datos del cliente y las cookies del pedido', async () => {
+    it('publica PagoAprobado con las lineas, los datos del cliente y las cookies del pedido', async () => {
       const ctx = makeUseCase();
       aprobado(ctx, existingPayment);
       ctx.orders.crearConfirmadoPorPago.mockResolvedValue(pedidoCreado);
 
       await ejecutar(ctx);
 
-      expect(ctx.voucher.generate).toHaveBeenCalledWith(pedidoCreado);
       expect(ctx.events.of(PagoAprobado)[0].pago).toEqual({
         orderNumber: existingPayment.orderNumber,
         total: 50000,
@@ -272,7 +269,6 @@ describe('HandleWebhookUseCase', () => {
         cliente: pedidoCreado.shippingInfo,
         fbp: 'fb.p.1',
         fbc: 'fb.c.1',
-        comprobantePdf: expect.any(Buffer),
       });
     });
 

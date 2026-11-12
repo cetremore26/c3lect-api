@@ -16,8 +16,6 @@ import type {
 } from '../ports/payment-repository.port';
 import { PAYMENT_SETTINGS } from '../ports/payment-settings.port';
 import type { PaymentSettingsPort } from '../ports/payment-settings.port';
-import { VOUCHER_GENERATOR } from '../ports/voucher-generator.port';
-import type { VoucherGeneratorPort } from '../ports/voucher-generator.port';
 
 export interface WebhookNotification {
   type: string;
@@ -33,7 +31,6 @@ export class HandleWebhookUseCase {
     @Inject(PAYMENT_GATEWAY) private readonly gateway: PaymentGatewayPort,
     @Inject(PAYMENT_REPOSITORY)
     private readonly payments: PaymentRepositoryPort,
-    @Inject(VOUCHER_GENERATOR) private readonly voucher: VoucherGeneratorPort,
     @Inject(PAYMENT_SETTINGS) private readonly settings: PaymentSettingsPort,
     @Inject(EVENT_BUS) private readonly events: EventBusPort,
   ) {}
@@ -133,7 +130,6 @@ export class HandleWebhookUseCase {
         cliente: order.shippingInfo,
         fbp: order.fbp,
         fbc: order.fbc,
-        comprobantePdf: await this.voucher.generate(order),
       }),
     );
   }

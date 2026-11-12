@@ -1,5 +1,7 @@
 import { NotificationsService } from './notifications.service';
 
+const pdf = Buffer.from('pdf');
+
 function makeService(adminEmail?: string) {
   const mail = {
     sendOtp: jest.fn(),
@@ -12,14 +14,16 @@ function makeService(adminEmail?: string) {
     sendOrderStatusUpdateAdmin: jest.fn(),
     sendStockAlert: jest.fn(),
   };
-  const service = new NotificationsService(mail, {
-    adminEmail: () => adminEmail,
-  });
-  return { service, mail };
+  const voucher = { generate: jest.fn().mockResolvedValue(pdf) };
+  const service = new NotificationsService(
+    mail,
+    { adminEmail: () => adminEmail },
+    voucher,
+  );
+  return { service, mail, voucher };
 }
 
 const cliente = { email: 'cliente@test.com', nombreCompleto: 'Cliente Test' };
-const pdf = Buffer.from('pdf');
 
 describe('NotificationsService', () => {
   it('pedido creado: confirma al cliente y, si hay ADMIN_EMAIL, avisa al admin', async () => {
@@ -85,6 +89,49 @@ describe('NotificationsService', () => {
   });
 
   describe('pagoAprobado', () => {
+    const lineasPago = [
+      { nombre: 'Reloj', cantidad: 1, precioUnitario: 50000, subtotal: 50000 },
+    ];
+
+    it('genera el comprobante en notificaciones con el numero, total y lineas', async () => {
+      const { service, mail, voucher } = makeService();
+
+      await service.pagoAprobado({
+        orderNumber: 'C3L-1',
+        total: 50000,
+        lineas: lineasPago,
+        cliente,
+      });
+
+      expect(voucher.generate).toHaveBeenCalledTimes(1);
+      expect(voucher.generate).toHaveBeenCalledWith({
+        orderNumber: 'C3L-1',
+        total: 50000,
+        items: lineasPago,
+      });
+      expect(mail.sendPaymentConfirmation).toHaveBeenCalledWith(
+        'cliente@test.com',
+        'Cliente Test',
+        'C3L-1',
+        50000,
+        pdf,
+      );
+    });
+
+    it('si el PDF falla, el error se propaga al bus (que lo registra) y no se manda el correo', async () => {
+      const { service, mail, voucher } = makeService('admin@c3lect.com');
+      voucher.generate.mockRejectedValue(new Error('pdf roto'));
+
+      await expect(
+        service.pagoAprobado({
+          orderNumber: 'C3L-1',
+          total: 50000,
+          lineas: lineasPago,
+          cliente,
+        }),
+      ).rejects.toThrow();
+      expect(mail.sendPaymentConfirmation).not.toHaveBeenCalled();
+    });
     it('sin ADMIN_EMAIL, manda el comprobante solo al cliente', async () => {
       const { service, mail } = makeService();
 
@@ -92,7 +139,7 @@ describe('NotificationsService', () => {
         orderNumber: 'C3L-1',
         total: 50000,
         cliente,
-        comprobantePdf: pdf,
+        lineas: lineasPago,
       });
 
       expect(mail.sendPaymentConfirmation).toHaveBeenCalledTimes(1);
@@ -112,7 +159,7 @@ describe('NotificationsService', () => {
         orderNumber: 'C3L-1',
         total: 50000,
         cliente,
-        comprobantePdf: pdf,
+        lineas: lineasPago,
       });
 
       expect(mail.sendPaymentConfirmation).toHaveBeenCalledWith(
@@ -131,7 +178,7 @@ describe('NotificationsService', () => {
         orderNumber: 'C3L-1',
         total: 50000,
         cliente: null,
-        comprobantePdf: pdf,
+        lineas: lineasPago,
       });
 
       expect(mail.sendPaymentConfirmation).not.toHaveBeenCalled();
