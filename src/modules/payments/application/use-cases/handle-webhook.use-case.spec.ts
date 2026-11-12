@@ -8,7 +8,11 @@ import { HandleWebhookUseCase } from './handle-webhook.use-case';
 
 const WEBHOOK_SECRET = 'test-secret';
 
-function firmarWebhook(dataId: string, requestId: string, ts = '1700000000') {
+function firmarWebhook(
+  dataId: string,
+  requestId: string,
+  ts = String(Date.now()),
+) {
   const manifest = `id:${dataId};request-id:${requestId};ts:${ts};`;
   const v1 = createHmac('sha256', WEBHOOK_SECRET)
     .update(manifest)

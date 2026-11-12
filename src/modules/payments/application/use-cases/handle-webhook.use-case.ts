@@ -60,6 +60,7 @@ export class HandleWebhookUseCase {
         mpPaymentId,
         xSignature,
         xRequestId,
+        Date.now(),
       );
     } catch (err) {
       // webhookSecret() falla si el secreto no está configurado — se registra
