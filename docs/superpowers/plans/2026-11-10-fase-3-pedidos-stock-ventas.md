@@ -437,7 +437,7 @@ git commit -m "fix(ventas): bloquear borrar ventas de pedidos y cambiar su marca
 
 **Files:**
 - Modify: `prisma/schema.prisma` (model `Product`)
-- Create: `prisma/migrations/20261110150100_productos_oculto_por_admin/migration.sql`
+- Create: `prisma/migrations/20261110150000_productos_oculto_por_admin/migration.sql`
 - Modify: `src/modules/products/domain/product.ts`
 - Create: `src/modules/products/domain/product.spec.ts`
 - Modify: `src/modules/products/application/ports/products-repository.port.ts`, `src/modules/products/infrastructure/persistence/products.repository.ts`, `products.repository.spec.ts`
@@ -531,7 +531,7 @@ Run: `DATABASE_URL=$INTEGRATION_DATABASE_URL pnpm exec prisma migrate deploy` y 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add prisma/schema.prisma prisma/migrations/20261110150100_productos_oculto_por_admin src/modules/products
+git add prisma/schema.prisma prisma/migrations/20261110150000_productos_oculto_por_admin src/modules/products
 git commit -m "feat(catalogo): no re-publicar productos ocultados a mano por el admin"
 ```
 
@@ -601,7 +601,7 @@ git commit -m "fix(catalogo): GET /products público solo devuelve productos pub
 
 **Files:**
 - Modify: `prisma/schema.prisma` (model `Order`)
-- Create: `prisma/migrations/20261110150000_orders_idempotency_key/migration.sql`
+- Create: `prisma/migrations/20261110150100_orders_idempotency_key/migration.sql`
 - Modify: `src/modules/orders/application/commands.ts`, `src/modules/orders/infrastructure/http/dto/create-order.dto.ts`
 - Modify: `src/modules/orders/application/ports/order-repository.port.ts`, `src/modules/orders/infrastructure/persistence/prisma-order.repository.ts`
 - Modify: `src/modules/orders/application/use-cases/create-order.use-case.ts`
@@ -697,7 +697,7 @@ Run: `pnpm test` → PASS; `INTEGRATION_DATABASE_URL=… pnpm test:int` → PASS
 - [ ] **Step 6: Commit**
 
 ```bash
-git add prisma/schema.prisma prisma/migrations/20261110150000_orders_idempotency_key src/modules/orders
+git add prisma/schema.prisma prisma/migrations/20261110150100_orders_idempotency_key src/modules/orders
 git commit -m "feat(pedidos): idempotencyKey en POST /orders para no duplicar pedidos al reintentar"
 ```
 
