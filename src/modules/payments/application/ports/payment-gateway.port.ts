@@ -22,6 +22,10 @@ export interface PreferenceResult {
 export interface MpPaymentStatus {
   status: string | undefined;
   externalReference: string | null | undefined;
+  /** Monto cobrado según MercadoPago; undefined si no lo reporta. */
+  transactionAmount: number | undefined;
+  /** Moneda cobrada según MercadoPago (ej. 'COP'); undefined si no la reporta. */
+  currencyId: string | undefined;
 }
 
 // Abstrae el SDK de MercadoPago. La única implementación real vive en

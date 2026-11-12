@@ -61,6 +61,8 @@ export class MercadoPagoPaymentGateway implements PaymentGatewayPort {
     return {
       status: mpPayment.status,
       externalReference: mpPayment.external_reference,
+      transactionAmount: mpPayment.transaction_amount,
+      currencyId: mpPayment.currency_id,
     };
   }
 }
