@@ -1,4 +1,7 @@
-import type { EstadoPago } from '../../domain/payment-status';
+import type {
+  EstadoPago,
+  ReglaDeTransicion,
+} from '../../domain/payment-status';
 import type { DraftPayload } from '../draft-payload';
 
 export const PAYMENT_REPOSITORY = Symbol('PAYMENT_REPOSITORY');
@@ -36,16 +39,20 @@ export interface PaymentRepositoryPort {
 
   findMostRecentByOrderNumber(orderNumber: string): Promise<Payment | null>;
 
+  findById(id: string): Promise<Payment | null>;
+
   /**
-   * Actualización atómica: solo aplica si el pago no está ya en un estado
-   * terminal (APROBADO/RECHAZADO/CANCELADO). MercadoPago reintenta la
-   * entrega del webhook, así que esta es la guarda que evita procesar dos
-   * veces la misma notificación. Devuelve si se aplicó.
+   * Transicion atomica y condicional: solo aplica si el pago esta en alguno
+   * de los estados de origen de la regla (y, si la regla lo exige, con el
+   * mismo mpPaymentId). MercadoPago reintenta la entrega del webhook, asi
+   * que esta es la guarda que evita procesar dos veces la misma
+   * notificacion. Devuelve true si actualizo exactamente una fila.
    */
-  markProcessedIfNotTerminal(params: {
+  transicionar(params: {
     paymentId: string;
     nuevoEstado: EstadoPago;
     mpPaymentId: string;
+    regla: ReglaDeTransicion;
   }): Promise<boolean>;
 
   linkToOrder(paymentId: string, orderId: string): Promise<void>;

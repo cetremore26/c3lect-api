@@ -3,7 +3,7 @@ import { createHmac } from 'crypto';
 import { BusinessRuleViolation } from '../../../../shared/domain/domain-error';
 import { fakeEventBus } from '../../../../shared/testing/fakes';
 import { PagoAprobado, PagoSinPedido } from '../../domain/payment-events';
-import { EstadoPago } from '../../domain/payment-status';
+import { EstadoPago, reglaDeTransicion } from '../../domain/payment-status';
 import { HandleWebhookUseCase } from './handle-webhook.use-case';
 
 const WEBHOOK_SECRET = 'test-secret';
@@ -39,7 +39,8 @@ function makeUseCase({ sinSecreto = false } = {}) {
     create: jest.fn(),
     findMostRecentByOrderId: jest.fn(),
     findMostRecentByOrderNumber: jest.fn(),
-    markProcessedIfNotTerminal: jest.fn().mockResolvedValue(true),
+    findById: jest.fn(),
+    transicionar: jest.fn().mockResolvedValue(true),
     linkToOrder: jest.fn().mockResolvedValue(undefined),
   };
   const voucher = { generate: jest.fn().mockResolvedValue(Buffer.from('pdf')) };
@@ -197,13 +198,13 @@ describe('HandleWebhookUseCase', () => {
 
     await ejecutar(ctx);
 
-    expect(ctx.payments.markProcessedIfNotTerminal).not.toHaveBeenCalled();
+    expect(ctx.payments.transicionar).not.toHaveBeenCalled();
   });
 
   it('no reprocesa un webhook si otra entrega ya dejo el pago en estado terminal', async () => {
     const ctx = makeUseCase();
     aprobado(ctx, existingPayment);
-    ctx.payments.markProcessedIfNotTerminal.mockResolvedValue(false);
+    ctx.payments.transicionar.mockResolvedValue(false);
 
     await ejecutar(ctx);
 
@@ -221,10 +222,11 @@ describe('HandleWebhookUseCase', () => {
 
     await ejecutar(ctx);
 
-    expect(ctx.payments.markProcessedIfNotTerminal).toHaveBeenCalledWith({
+    expect(ctx.payments.transicionar).toHaveBeenCalledWith({
       paymentId: 'payment-1',
       nuevoEstado: EstadoPago.PENDIENTE,
       mpPaymentId: 'mp-1',
+      regla: reglaDeTransicion(EstadoPago.PENDIENTE),
     });
     expect(ctx.orders.crearConfirmadoPorPago).not.toHaveBeenCalled();
     expect(ctx.orders.confirmarPorPago).not.toHaveBeenCalled();

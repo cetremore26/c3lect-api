@@ -159,6 +159,7 @@ enum EstadoPago {
   APROBADO
   RECHAZADO
   CANCELADO
+  REEMBOLSADO
 }
 
 model Order {

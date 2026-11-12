@@ -3,7 +3,7 @@ import { EVENT_BUS } from '../../../../shared/application/ports/event-bus.port';
 import type { EventBusPort } from '../../../../shared/application/ports/event-bus.port';
 import { mapEstadoPago } from '../../domain/mp-status';
 import { PagoAprobado, PagoSinPedido } from '../../domain/payment-events';
-import { EstadoPago } from '../../domain/payment-status';
+import { EstadoPago, reglaDeTransicion } from '../../domain/payment-status';
 import { verifyMpWebhookSignature } from '../../domain/verify-mp-webhook-signature';
 import { ORDERS } from '../ports/orders.port';
 import type { OrdersPort, PedidoParaPago } from '../ports/orders.port';
@@ -95,10 +95,11 @@ export class HandleWebhookUseCase {
         return;
       }
 
-      const applied = await this.payments.markProcessedIfNotTerminal({
+      const applied = await this.payments.transicionar({
         paymentId: existingPayment.id,
         nuevoEstado,
         mpPaymentId: String(mpPaymentId),
+        regla: reglaDeTransicion(nuevoEstado),
       });
       if (!applied) return; // ya procesado por otra entrega del webhook
 
