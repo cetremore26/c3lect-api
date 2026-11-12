@@ -61,7 +61,7 @@ export interface VentaExistente {
   estado: string;
 }
 
-export interface VentaUpdateDto {
+export interface VentaCambios {
   fecha?: string;
   cliente?: string;
   celular?: string;
@@ -98,7 +98,7 @@ export interface VentaUpdatePlan {
 // "Pagado" cuando el abono alcanza o supera el precio.
 export function planVentaUpdate(
   existing: VentaExistente,
-  dto: VentaUpdateDto,
+  dto: VentaCambios,
 ): VentaUpdatePlan {
   const normalizar = (v: string | null | undefined) =>
     (v ?? '').trim().toLowerCase();

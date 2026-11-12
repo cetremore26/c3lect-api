@@ -16,7 +16,7 @@ import {
   calcularSaldoPendiente,
   esElegibleParaMetaOffline,
   planVentaUpdate,
-  VentaUpdateDto,
+  VentaCambios,
 } from '../domain/ventas.util';
 import { VENTAS_REPOSITORY } from './ports/ventas-repository.port';
 import type { VentasRepositoryPort } from './ports/ventas-repository.port';
@@ -104,7 +104,7 @@ export class VentasService {
     return venta;
   }
 
-  async update(id: string, dto: VentaUpdateDto, userId?: string) {
+  async update(id: string, dto: VentaCambios, userId?: string) {
     const existing = await this.findExisting(id);
     const plan = planVentaUpdate(existing, dto);
 
