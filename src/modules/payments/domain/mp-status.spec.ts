@@ -1,4 +1,4 @@
-import { EstadoPago } from '@prisma/client';
+import { EstadoPago } from './payment-status';
 import { mapEstadoPago } from './mp-status';
 
 describe('mapEstadoPago', () => {
@@ -8,6 +8,8 @@ describe('mapEstadoPago', () => {
     ['pending', EstadoPago.PENDIENTE],
     ['in_process', EstadoPago.PENDIENTE],
     ['cancelled', EstadoPago.CANCELADO],
+    ['refunded', EstadoPago.REEMBOLSADO],
+    ['charged_back', EstadoPago.REEMBOLSADO],
   ])('mapea "%s" a %s', (mpStatus, esperado) => {
     expect(mapEstadoPago(mpStatus)).toBe(esperado);
   });

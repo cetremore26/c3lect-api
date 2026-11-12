@@ -6,14 +6,14 @@ import { InventarioFacade } from '../../../inventario/public-api';
 export class InventoryAdapter implements InventoryLookupPort {
   constructor(private readonly inventario: InventarioFacade) {}
 
-  async stockDe(
+  async filaDeStock(
     modelo: string,
     nombreCompletoLegado: string,
-  ): Promise<number | null> {
+  ): Promise<{ id: string; stock: number } | null> {
     const item = await this.inventario.buscarPorModelo(
       modelo,
       nombreCompletoLegado,
     );
-    return item?.stock ?? null;
+    return item ? { id: item.id, stock: item.stock } : null;
   }
 }

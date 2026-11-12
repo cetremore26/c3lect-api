@@ -78,6 +78,19 @@ describe('UsersService.findAll', () => {
       totalPages: 3,
     });
   });
+  it('limita limit a 100', async () => {
+    const { service, repository } = makeService();
+    repository.findAllPaginated.mockResolvedValue({ data: [], total: 0 });
+
+    const r = await service.findAll(undefined, 1, 5000);
+
+    expect(repository.findAllPaginated).toHaveBeenCalledWith(
+      { search: undefined },
+      0,
+      100,
+    );
+    expect(r.meta.limit).toBe(100);
+  });
 });
 
 describe('UsersService.findOne', () => {

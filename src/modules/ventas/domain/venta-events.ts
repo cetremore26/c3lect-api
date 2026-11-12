@@ -31,3 +31,21 @@ export class VentaEliminada implements DomainEvent {
     readonly venta: { ventaId: string; marca: string | null; modelo: string },
   ) {}
 }
+
+/**
+ * Se anularon las ventas de plataforma de un pedido (cancelación de un
+ * CONFIRMADO). `lineas` es lo que realmente se despachó (las filas que ventas
+ * tenía registradas), no lo que dice el catálogo hoy: inventario repone
+ * exactamente eso.
+ */
+export class VentasDePedidoAnuladas implements DomainEvent {
+  static readonly NAME = 'ventas.ventas-de-pedido-anuladas';
+  readonly name = VentasDePedidoAnuladas.NAME;
+
+  constructor(
+    readonly anulacion: {
+      orderId: string;
+      lineas: { marca: string | null; modelo: string; cantidad: number }[];
+    },
+  ) {}
+}

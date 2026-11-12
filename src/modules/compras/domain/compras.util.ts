@@ -14,7 +14,7 @@ export interface CompraExistente {
   categoria: string;
 }
 
-export interface CompraUpdateDto {
+export interface CompraCambios {
   fecha?: string;
   marca?: string;
   modelo?: string;
@@ -44,7 +44,7 @@ export interface CompraUpdatePlan {
 // que este plan ya decidió, sin volver a interpretar el dto.
 export function planCompraUpdate(
   existing: CompraExistente,
-  dto: CompraUpdateDto,
+  dto: CompraCambios,
 ): CompraUpdatePlan {
   const marca = dto.marca ?? existing.marca;
   const modelo = dto.modelo ?? existing.modelo;

@@ -1,4 +1,7 @@
-import { NotFoundError } from '../../../shared/domain/domain-error';
+import {
+  BusinessRuleViolation,
+  NotFoundError,
+} from '../../../shared/domain/domain-error';
 import { fakeEventBus, fakeUnitOfWork } from '../../../shared/testing/fakes';
 import { VentaEliminada, VentaManualRegistrada } from '../domain/venta-events';
 import { VentasService } from './ventas.service';
@@ -6,6 +9,7 @@ import { VentasService } from './ventas.service';
 function makeService() {
   const repository = {
     findById: jest.fn(),
+    findByOrderId: jest.fn(),
     create: jest.fn(),
     createMany: jest.fn(),
     update: jest.fn(),
@@ -171,6 +175,21 @@ describe('VentasService.update', () => {
 });
 
 describe('VentasService.remove', () => {
+  it('no borra una venta que viene de un pedido', async () => {
+    const { service, repository, events } = makeService();
+    repository.findById.mockResolvedValue({
+      id: 'v1',
+      orderId: 'order-1',
+      marca: 'Rolex',
+      modelo: 'Submariner',
+      cliente: 'Ana',
+    });
+
+    await expect(service.remove('v1')).rejects.toThrow(BusinessRuleViolation);
+    expect(repository.remove).not.toHaveBeenCalled();
+    expect(events.publish).not.toHaveBeenCalled();
+  });
+
   it('propaga NotFoundError si no existe', async () => {
     const { service, repository } = makeService();
     repository.findById.mockResolvedValue(null);

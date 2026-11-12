@@ -31,6 +31,7 @@ import {
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { JwtAuthGuard } from '../../../../shared/infrastructure/http/auth/jwt-auth.guard';
+import { OptionalJwtAuthGuard } from '../../../../shared/infrastructure/http/auth/optional-jwt-auth.guard';
 import { RolesGuard } from '../../../../shared/infrastructure/http/auth/roles.guard';
 import { Roles } from '../../../../shared/infrastructure/http/auth/roles.decorator';
 import { CurrentUser } from '../../../../shared/infrastructure/http/auth/current-user.decorator';
@@ -41,7 +42,12 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar productos con filtros opcionales' })
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Listar productos con filtros opcionales (sin rol ADMIN, solo publicados y completos)',
+  })
   @ApiQuery({ name: 'categoria', required: false, example: 'reloj' })
   @ApiQuery({ name: 'marca', required: false, example: 'Fossil' })
   @ApiQuery({ name: 'genero', required: false, example: 'Hombre' })
@@ -51,8 +57,13 @@ export class ProductsController {
   @ApiQuery({ name: 'sortBy', required: false, enum: ProductSortBy })
   @ApiQuery({ name: 'sortOrder', required: false, enum: SortOrder })
   @ApiOkResponse({ description: 'Lista de productos' })
-  findAll(@Query() query: QueryProductDto) {
-    return this.productsService.findAll(query);
+  findAll(
+    @Query() query: QueryProductDto,
+    @CurrentUser() user?: { id: string; rol: string },
+  ) {
+    return this.productsService.findAll(query, {
+      esAdmin: user?.rol === 'ADMIN',
+    });
   }
 
   @Get(':id')

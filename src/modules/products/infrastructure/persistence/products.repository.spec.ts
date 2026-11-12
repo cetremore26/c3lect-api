@@ -50,3 +50,20 @@ describe('ProductsRepository.findByMarcaModelo', () => {
     expect(prisma.product.findMany).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('ProductsRepository.habilitarPorNombre', () => {
+  it('habilitarPorNombre excluye las ocultas por el admin', async () => {
+    const prisma = { product: { updateMany: jest.fn() } };
+    await new ProductsRepository({ client: prisma } as any).habilitarPorNombre(
+      'Rolex Submariner',
+    );
+    expect(prisma.product.updateMany).toHaveBeenCalledWith({
+      where: {
+        nombre: { equals: 'Rolex Submariner', mode: 'insensitive' },
+        disponible: false,
+        ocultoPorAdmin: false,
+      },
+      data: { disponible: true },
+    });
+  });
+});

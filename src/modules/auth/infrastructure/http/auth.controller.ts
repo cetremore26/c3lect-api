@@ -23,6 +23,7 @@ import { JwtAuthGuard } from '../../../../shared/infrastructure/http/auth/jwt-au
 import { CurrentUser } from '../../../../shared/infrastructure/http/auth/current-user.decorator';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { LoginSecondFactorDto } from './dto/login-second-factor.dto';
 import { RequestOtpDto } from './dto/request-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { RequestPasswordResetDto } from './dto/request-password-reset.dto';
@@ -35,6 +36,7 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @Throttle({ auth: { limit: 8, ttl: 60000 } })
   @ApiOperation({ summary: 'Registro con email y contraseña' })
   @ApiCreatedResponse({
     description: 'Usuario creado — retorna accessToken y refreshToken',
@@ -52,6 +54,16 @@ export class AuthController {
   @ApiUnauthorizedResponse({ description: 'Credenciales incorrectas' })
   login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
+  }
+
+  @Post('login/2fa')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ auth: { limit: 8, ttl: 60000 } })
+  @ApiOperation({ summary: 'Segundo factor del admin (código por correo)' })
+  @ApiOkResponse({ description: 'Retorna accessToken y refreshToken' })
+  @ApiUnauthorizedResponse({ description: 'Código inválido o expirado' })
+  loginSecondFactor(@Body() dto: LoginSecondFactorDto) {
+    return this.authService.loginSecondFactor(dto);
   }
 
   @Post('request-otp')

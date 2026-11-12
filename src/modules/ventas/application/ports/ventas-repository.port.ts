@@ -29,6 +29,7 @@ export type NuevaVenta = Omit<Venta, 'id' | 'createdAt' | 'orderId'> & {
 // Único dueño de historical_sales. El stock ya no se toca desde aquí.
 export interface VentasRepositoryPort {
   findById(id: string): Promise<Venta | null>;
+  findByOrderId(orderId: string): Promise<Venta[]>;
   create(data: NuevaVenta): Promise<Venta>;
   createMany(data: NuevaVenta[]): Promise<void>;
   update(id: string, plan: VentaUpdatePlan): Promise<Venta>;

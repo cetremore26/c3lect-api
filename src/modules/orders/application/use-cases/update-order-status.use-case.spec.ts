@@ -1,5 +1,6 @@
 import {
   BusinessRuleViolation,
+  ConflictError,
   NotFoundError,
 } from '../../../../shared/domain/domain-error';
 import { fakeEventBus, fakeUnitOfWork } from '../../../../shared/testing/fakes';
@@ -80,7 +81,7 @@ function makeUseCase(order: ReturnType<typeof makeOrder> | null) {
     events,
     audit,
   );
-  return { useCase, orders, uow, events, audit };
+  return { useCase, orders, catalog, uow, events, audit };
 }
 
 describe('UpdateOrderStatusUseCase', () => {
@@ -137,11 +138,19 @@ describe('UpdateOrderStatusUseCase', () => {
   });
 
   it('al cancelar un pedido ya CONFIRMADO, publica ConfirmacionDePedidoRevertida', async () => {
-    const { useCase, events } = makeUseCase(makeOrder(EstadoPedido.CONFIRMADO));
+    const { useCase, events, catalog } = makeUseCase(
+      makeOrder(EstadoPedido.CONFIRMADO),
+    );
 
     await useCase.execute('order-1', EstadoPedido.CANCELADO, 'admin-1');
 
     expect(events.of(ConfirmacionDePedidoRevertida)).toHaveLength(1);
+    // Lo despachado lo saben ventas/inventario: no se re-resuelve el catálogo.
+    expect(events.of(ConfirmacionDePedidoRevertida)[0].pedido).toEqual({
+      orderId: 'order-1',
+      orderNumber: 'C3L-20260101-ABCDE',
+    });
+    expect(catalog.findByIds).not.toHaveBeenCalled();
     expect(events.of(PedidoConfirmado)).toHaveLength(0);
   });
 
@@ -192,5 +201,32 @@ describe('UpdateOrderStatusUseCase', () => {
       expect.stringContaining('CONFIRMADO → EN_CAMINO'),
       'admin-1',
     );
+  });
+
+  it('lee el pedido dentro de la transaccion', async () => {
+    const { useCase, uow, orders } = makeUseCase(
+      makeOrder(EstadoPedido.PENDIENTE),
+    );
+    uow.run.mockImplementation(async (work) => {
+      expect(orders.findByIdForStatusTransition).not.toHaveBeenCalled();
+      return work();
+    });
+
+    await useCase.execute('order-1', EstadoPedido.CONFIRMADO, 'admin-1');
+
+    expect(orders.findByIdForStatusTransition).toHaveBeenCalledTimes(1);
+  });
+
+  it('si otro proceso cambió el estado antes, lanza ConflictError sin publicar', async () => {
+    const { useCase, orders, events, audit } = makeUseCase(
+      makeOrder(EstadoPedido.PENDIENTE),
+    );
+    orders.transitionStatus.mockResolvedValue(null);
+
+    await expect(
+      useCase.execute('order-1', EstadoPedido.CONFIRMADO, 'admin-1'),
+    ).rejects.toThrow(ConflictError);
+    expect(events.publish).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
   });
 });

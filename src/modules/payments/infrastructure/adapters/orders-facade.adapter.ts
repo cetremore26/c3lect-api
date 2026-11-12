@@ -35,10 +35,6 @@ export class OrdersFacadeAdapter implements OrdersPort {
     await this.orders.confirmarPorPago(orderId);
   }
 
-  async cancelarPorPago(orderId: string): Promise<void> {
-    await this.orders.cancelarPorPago(orderId);
-  }
-
   async crearConfirmadoPorPago(
     params: Parameters<OrdersPort['crearConfirmadoPorPago']>[0],
   ): Promise<PedidoParaPago> {
@@ -50,6 +46,7 @@ function toPedidoParaPago(order: OrderSnapshot): PedidoParaPago {
   return {
     id: order.id,
     orderNumber: order.orderNumber,
+    userId: order.userId,
     pendiente: order.status === EstadoPedido.PENDIENTE,
     total: order.total,
     fbp: order.fbp,

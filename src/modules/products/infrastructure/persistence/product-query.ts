@@ -37,6 +37,14 @@ export function buildProductWhere(
   if (filter.incompletos) {
     where.OR = [{ precio: 0 }, { estilo: '' }, { imgs: { equals: [] } }];
   }
+  if (filter.soloPublicados) {
+    where.AND = [
+      { disponible: true },
+      { precio: { gt: 0 } },
+      { estilo: { not: '' } },
+      { imgs: { isEmpty: false } },
+    ];
+  }
 
   return where;
 }

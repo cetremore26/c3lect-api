@@ -1,5 +1,6 @@
 import type {
   Product,
+  ProductChanges,
   ProductData,
   ProductFilter,
   ProductSort,
@@ -25,8 +26,8 @@ export interface ProductsRepositoryPort {
   ): Promise<{ data: Product[]; total: number }>;
   findById(id: string): Promise<Product | null>;
   findByIds(ids: string[], soloDisponibles: boolean): Promise<Product[]>;
-  create(data: ProductData): Promise<Product>;
-  update(id: string, data: Partial<Omit<ProductData, 'id'>>): Promise<Product>;
+  create(data: ProductData & { ocultoPorAdmin: boolean }): Promise<Product>;
+  update(id: string, data: ProductChanges): Promise<Product>;
   remove(id: string): Promise<void>;
   findMarcas(): Promise<string[]>;
 
@@ -36,6 +37,8 @@ export interface ProductsRepositoryPort {
     nombre: string,
     disponible: boolean,
   ): Promise<void>;
+  /** Habilita solo variantes deshabilitadas que el admin no ocultó a mano. */
+  habilitarPorNombre(nombre: string): Promise<void>;
   setPrecioPorNombre(nombre: string, precio: number): Promise<void>;
   /** Renombra variantes; devuelve cuántas cambió. */
   renombrar(

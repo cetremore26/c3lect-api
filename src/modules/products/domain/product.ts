@@ -37,9 +37,29 @@ export type Product = {
     : ProductData[K];
 } & {
   disponible: boolean;
+  ocultoPorAdmin: boolean;
   destacado: boolean;
   imgs: string[];
 };
+
+/** Cambios aplicables a un producto; `ocultoPorAdmin` lo deduce la API. */
+export type ProductChanges = Partial<Omit<ProductData, 'id'>> & {
+  ocultoPorAdmin?: boolean;
+};
+
+/**
+ * Si el admin cambió `disponible` a mano, el producto queda (o deja de quedar)
+ * oculto por él. `undefined` = no tocar (el formulario reenvía `disponible`
+ * sin cambios al guardar otros campos).
+ */
+export function ocultoPorAdminTrasCambio(
+  actual: { disponible: boolean },
+  cambios: { disponible?: boolean },
+): boolean | undefined {
+  if (cambios.disponible === undefined) return undefined;
+  if (cambios.disponible === actual.disponible) return undefined;
+  return !cambios.disponible;
+}
 
 /**
  * Producto pendiente por completar (sin precio, estilo o imágenes): no se
@@ -78,6 +98,8 @@ export interface ProductFilter {
   destacado?: boolean;
   /** Pendientes por completar: sin precio, imágenes o estilo. */
   incompletos?: boolean;
+  /** Solo publicados (disponibles) y completos. Lo fuerza el servicio a no-admin. */
+  soloPublicados?: boolean;
 }
 
 export interface ProductSort {

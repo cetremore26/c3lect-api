@@ -269,23 +269,27 @@ export class MailService {
     if (error) this.logger.error('sendOrderStatusUpdateAdmin error', error);
   }
 
-  async sendStockAlert(
+  async sendPaymentAlert(
     adminEmail: string,
-    orderNumber: string,
-    detalle: string,
+    alerta: {
+      asunto: string;
+      titulo: string;
+      orderNumber: string;
+      detalle: string;
+    },
   ): Promise<void> {
     const { error } = await this.resend.emails.send({
       from: this.from,
       to: adminEmail,
-      subject: `⚠️ Atención requerida — pedido #${orderNumber} pagado sin stock`,
+      subject: alerta.asunto,
       html: `
         <div style="font-family:sans-serif;max-width:560px;margin:0 auto;padding:32px">
-          <h2 style="color:#b91c1c">Pago aprobado sin stock suficiente</h2>
-          <p style="color:#555">El pedido <strong>#${orderNumber}</strong> fue pagado por MercadoPago pero no se pudo confirmar por falta de stock. El pedido quedó en estado PENDIENTE y requiere atención manual.</p>
-          <pre style="background:#f4f4f5;border-radius:8px;padding:16px;white-space:pre-wrap;color:#111">${detalle}</pre>
+          <h2 style="color:#b91c1c">${escapeHtml(alerta.titulo)}</h2>
+          <p style="color:#555">Pedido <strong>#${escapeHtml(alerta.orderNumber)}</strong></p>
+          <pre style="background:#f4f4f5;border-radius:8px;padding:16px;white-space:pre-wrap;color:#111">${escapeHtml(alerta.detalle)}</pre>
         </div>
       `,
     });
-    if (error) this.logger.error('sendStockAlert error', error);
+    if (error) this.logger.error('sendPaymentAlert error', error);
   }
 }

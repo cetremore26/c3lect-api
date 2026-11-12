@@ -88,6 +88,8 @@ export interface NewOrderData {
   fbc: string | null;
   items: OrderItemData[];
   shippingInfo: ShippingData;
+  /** Clave del checkout; dos pedidos no pueden compartirla. */
+  idempotencyKey?: string | null;
 }
 
 /** Un producto que el cliente ya tiene en sus manos (pedido ENTREGADO). */
@@ -123,18 +125,31 @@ export interface OrderRepositoryPort {
 
   findByIdForPayment(id: string): Promise<OrderSnapshot | null>;
 
-  create(data: NewOrderData): Promise<CreatedOrder>;
+  findByIdempotencyKey(key: string): Promise<CreatedOrder | null>;
+
+  /**
+   * Crea el pedido en PENDIENTE. Si otra petición ya creó uno con la misma
+   * `idempotencyKey` (carrera), devuelve ese con `nuevo: false` en vez de
+   * fallar o duplicarlo.
+   */
+  create(data: NewOrderData): Promise<{ order: CreatedOrder; nuevo: boolean }>;
 
   /** Crea el pedido directamente en CONFIRMADO, con su historial. */
   createConfirmed(data: NewOrderData, changedBy: string): Promise<CreatedOrder>;
 
-  /** Cambia el estado y agrega la fila de historial. */
+  /**
+   * Cambia el estado solo si el pedido sigue en `statusAnterior` y agrega la
+   * fila de historial. Devuelve `null` si otro proceso ya lo había cambiado.
+   */
   transitionStatus(params: {
     orderId: string;
     statusAnterior: EstadoPedido;
     statusNuevo: EstadoPedido;
     changedBy: string;
-  }): Promise<OrderForStatusTransition>;
+  }): Promise<OrderForStatusTransition | null>;
+
+  /** Pedidos cuyo email de envío (sin distinguir mayúsculas) se creó desde `desde`. */
+  countByShippingEmailSince(email: string, desde: Date): Promise<number>;
 
   linkGuestOrders(email: string, userId: string): Promise<void>;
 

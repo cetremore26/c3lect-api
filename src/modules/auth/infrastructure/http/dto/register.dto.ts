@@ -1,3 +1,4 @@
+import { NormalizeEmail } from '../../../../../shared/infrastructure/http/dto/normalize-email.transform';
 import type { RegisterCommand } from '../../../application/auth.service';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
@@ -16,10 +17,20 @@ const PASSWORD_MSG =
   'La contraseña debe tener mínimo 8 caracteres, una mayúscula, un número y un carácter especial.';
 
 export class RegisterDto implements RegisterCommand {
-  @ApiProperty({ example: 'user@example.com' })
+  @ApiPropertyOptional({
+    description: 'Token devuelto por verify-otp al verificar el correo',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  registrationToken?: string;
+
+  @ApiPropertyOptional({ example: 'user@example.com' })
+  @IsOptional()
+  @NormalizeEmail()
   @IsEmail()
   @MaxLength(150)
-  email: string;
+  email?: string;
 
   @ApiProperty({ example: 'Password1!' })
   @IsString()

@@ -15,12 +15,13 @@ export class UsersService {
   ) {}
 
   async findAll(search?: string, page = 1, limit = 20) {
-    const skip = (page - 1) * limit;
+    const take = Math.min(Math.max(limit, 1), 100);
+    const skip = (page - 1) * take;
 
     const { data: users, total } = await this.usersRepository.findAllPaginated(
       { search },
       skip,
-      limit,
+      take,
     );
     const ordersByUser = await this.orders.totalsByUser(users.map((u) => u.id));
 
@@ -39,7 +40,7 @@ export class UsersService {
 
     return {
       data,
-      meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      meta: { total, page, limit: take, totalPages: Math.ceil(total / take) },
     };
   }
 

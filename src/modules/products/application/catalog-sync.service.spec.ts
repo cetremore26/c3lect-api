@@ -3,6 +3,7 @@ import { CatalogSyncService } from './catalog-sync.service';
 function makeService(variantes: object[] = []) {
   const repo = {
     setDisponibilidadPorNombre: jest.fn(),
+    habilitarPorNombre: jest.fn(),
     renombrar: jest.fn().mockResolvedValue(0),
     findByMarcaModelo: jest.fn().mockResolvedValue(variantes),
     existsId: jest.fn().mockResolvedValue(false),
@@ -43,7 +44,7 @@ describe('CatalogSyncService', () => {
     ]);
   });
 
-  it('reponer vuelve a habilitar las variantes', async () => {
+  it('reponer solo habilita variantes no ocultas por el admin', async () => {
     const { service, repo } = makeService();
 
     await service.reponer({
@@ -52,13 +53,20 @@ describe('CatalogSyncService', () => {
       nombreProducto: null,
     });
 
-    expect(repo.setDisponibilidadPorNombre).toHaveBeenCalledWith(
-      'Organizador',
-      true,
-    );
+    expect(repo.habilitarPorNombre).toHaveBeenCalledWith('Organizador');
+    expect(repo.setDisponibilidadPorNombre).not.toHaveBeenCalled();
   });
 
   describe('sincronizarIngreso', () => {
+    it('un ingreso de mercancía no re-publica variantes ocultas por el admin', async () => {
+      const { service, repo } = makeService([
+        { id: 'a', disponible: false, ocultoPorAdmin: true, marca: 'Rolex' },
+        { id: 'b', disponible: false, ocultoPorAdmin: false, marca: 'Rolex' },
+      ]);
+      await service.sincronizarIngreso(ingreso);
+      expect(repo.enable).toHaveBeenCalledWith(['b']);
+    });
+
     it('crea un producto stub pendiente si hay stock y no existe ninguna variante', async () => {
       const { service, repo } = makeService([]);
 

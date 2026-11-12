@@ -5,7 +5,6 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
-  Logger,
   Param,
   Post,
   UseGuards,
@@ -33,8 +32,6 @@ import { CurrentUser } from '../../../../shared/infrastructure/http/auth/current
 @ApiTags('Pagos')
 @Controller('payments')
 export class PaymentsController {
-  private readonly logger = new Logger(PaymentsController.name);
-
   constructor(
     private readonly createPaymentUseCase: CreatePaymentUseCase,
     private readonly createPendingOrderPaymentUseCase: CreatePendingOrderPaymentUseCase,
@@ -48,7 +45,7 @@ export class PaymentsController {
   @ApiOperation({
     summary: 'Crear preferencia de pago',
     description:
-      'Genera una preferencia en MercadoPago y retorna la URL de checkout. Funciona para usuarios autenticados e invitados.',
+      'Genera una preferencia en MercadoPago y retorna la URL de checkout. Solo para el dueño del pedido o un ADMIN (los pedidos de invitado solo los paga un ADMIN).',
   })
   @ApiCreatedResponse({
     description: 'Retorna checkoutUrl, preferenceId y paymentId',
@@ -57,7 +54,10 @@ export class PaymentsController {
     @Body() dto: CreatePaymentDto,
     @CurrentUser() user?: { id: string; rol: string },
   ) {
-    return this.createPaymentUseCase.execute(dto, user?.id);
+    return this.createPaymentUseCase.execute(dto, {
+      userId: user?.id,
+      rol: user?.rol,
+    });
   }
 
   @Post('create-pending')
@@ -80,23 +80,19 @@ export class PaymentsController {
 
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
-  @SkipThrottle()
+  @SkipThrottle({ default: true, auth: true })
   @ApiOperation({
     summary: 'Webhook de MercadoPago (público)',
     description:
-      'Recibe notificaciones de MercadoPago. Retorna 200 inmediatamente y procesa de forma asíncrona.',
+      'Recibe notificaciones de MercadoPago y las procesa antes de responder: 200 si se procesó o no aplica, 401 si la firma no es válida, 500 ante un fallo inesperado para que MercadoPago reintente.',
   })
   @ApiOkResponse({ description: 'Notificación recibida' })
-  handleWebhook(
+  async handleWebhook(
     @Body() dto: WebhookPaymentDto,
     @Headers('x-signature') xSignature?: string,
     @Headers('x-request-id') xRequestId?: string,
-  ) {
-    // Fire-and-forget — MP reintenta si no recibe 200
-    void this.handleWebhookUseCase
-      .execute(dto, xSignature, xRequestId)
-      .catch((err) => this.logger.error('Webhook processing error', err));
-
+  ): Promise<{ received: true }> {
+    await this.handleWebhookUseCase.execute(dto, xSignature, xRequestId);
     return { received: true };
   }
 
@@ -110,7 +106,13 @@ export class PaymentsController {
   @ApiNotFoundResponse({
     description: 'No hay registro de pago para este pedido',
   })
-  getPayment(@Param('orderId') orderId: string) {
-    return this.getPaymentUseCase.execute(orderId);
+  getPayment(
+    @Param('orderId') orderId: string,
+    @CurrentUser() user: { id: string; rol: string },
+  ) {
+    return this.getPaymentUseCase.execute(orderId, {
+      userId: user.id,
+      rol: user.rol,
+    });
   }
 }

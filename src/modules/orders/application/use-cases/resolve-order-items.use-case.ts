@@ -4,6 +4,7 @@ import { deriveMarcaModeloFromProduct } from '../../../../shared/domain/marca-mo
 import {
   PricedOrder,
   RequestedItem,
+  fusionarItemsRepetidos,
   priceOrderItems,
 } from '../../domain/order-pricing';
 import { INVENTORY_LOOKUP } from '../ports/inventory-lookup.port';
@@ -32,6 +33,7 @@ export class ResolveOrderItemsUseCase {
     items: RequestedItem[],
     autenticado = false,
   ): Promise<PricedOrder> {
+    items = fusionarItemsRepetidos(items);
     const productIds = items.map((i) => i.productId);
     const products = await this.catalog.findAvailableByIds(productIds);
 
@@ -48,13 +50,30 @@ export class ResolveOrderItemsUseCase {
     );
     const priced = priceOrderItems(items, products, precios);
 
+    // Varias lineas (o variantes) pueden compartir una fila de inventario:
+    // se acumula lo pedido por fila antes de comparar con su stock.
+    const porFila = new Map<
+      string,
+      { stock: number; cantidad: number; nombres: string[] }
+    >();
     for (const item of priced.itemsData) {
       const product = products.get(item.productId)!;
       const { modelo } = deriveMarcaModeloFromProduct(product);
-      const stock = await this.inventory.stockDe(modelo, product.nombre);
-      if (stock !== null && stock < item.cantidad) {
+      const fila = await this.inventory.filaDeStock(modelo, product.nombre);
+      if (fila === null) continue;
+      const acumulado = porFila.get(fila.id) ?? {
+        stock: fila.stock,
+        cantidad: 0,
+        nombres: [],
+      };
+      acumulado.cantidad += item.cantidad;
+      acumulado.nombres.push(item.nombre);
+      porFila.set(fila.id, acumulado);
+    }
+    for (const { stock, cantidad, nombres } of porFila.values()) {
+      if (cantidad > stock) {
         throw new BusinessRuleViolation(
-          `Stock insuficiente para "${item.nombre}" (disponible: ${stock}, solicitado: ${item.cantidad}).`,
+          `Stock insuficiente para "${nombres.join('", "')}" (disponible: ${stock}, solicitado: ${cantidad}).`,
         );
       }
     }

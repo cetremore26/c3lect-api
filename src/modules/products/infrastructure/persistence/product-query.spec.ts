@@ -30,6 +30,18 @@ describe('buildProductWhere', () => {
     expect(buildProductWhere({})).not.toHaveProperty('disponible');
   });
 
+  it('soloPublicados exige disponible y producto completo, compatible con incompletos', () => {
+    expect(buildProductWhere({ soloPublicados: true }).AND).toEqual([
+      { disponible: true },
+      { precio: { gt: 0 } },
+      { estilo: { not: '' } },
+      { imgs: { isEmpty: false } },
+    ]);
+    expect(
+      buildProductWhere({ soloPublicados: true, incompletos: true }),
+    ).toHaveProperty('OR');
+  });
+
   it('busca productos incompletos por precio, estilo o imagenes vacias', () => {
     expect(buildProductWhere({ incompletos: true }).OR).toEqual([
       { precio: 0 },

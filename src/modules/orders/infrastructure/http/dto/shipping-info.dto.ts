@@ -1,3 +1,4 @@
+import { NormalizeEmail } from '../../../../../shared/infrastructure/http/dto/normalize-email.transform';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsEmail,
@@ -15,6 +16,7 @@ export class ShippingInfoDto {
   nombreCompleto: string;
 
   @ApiProperty({ example: 'juan@example.com' })
+  @NormalizeEmail()
   @IsEmail()
   @MaxLength(150)
   email: string;
