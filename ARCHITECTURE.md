@@ -80,7 +80,7 @@ adaptador, y TypeScript avisa si DTO y comando se desincronizan.
 | Marcas | `marcas` | — (lee catálogo y compras) | — | — |
 | Promociones | `promotions` | `promotions` | — | — |
 | Pedidos | `orders` | `orders`, `order_items`, `shipping_info`, `order_status_history` | `PedidoCreado`, `PedidoConfirmado`, `ConfirmacionDePedidoRevertida`, `EstadoDePedidoCambiado` | `UsuarioRegistrado` |
-| Pagos | `payments` | `payments` | `PagoAprobado`, `PagoSinPedido` | — |
+| Pagos | `payments` | `payments` | `PagoAprobado`, `PagoSinPedido`, `PagoDuplicado`, `PagoReembolsado` | — |
 | Inventario | `inventario` | `inventario_maestro` | `StockAgotado`, `StockRepuesto`, `MercanciaIngresada`, `SalidaPorPedidoRegistrada`, `InventarioRecalculado` | `PedidoConfirmado`, `VentasDePedidoAnuladas`, `VentaManualRegistrada`, `VentaEliminada`, `CompraRegistrada`, `CompraCorregida` |
 | Ventas | `ventas` | `historical_sales` | `VentaManualRegistrada`, `VentaEliminada`, `VentasDePedidoAnuladas` | `SalidaPorPedidoRegistrada`, `ConfirmacionDePedidoRevertida` |
 | Compras | `compras` | `purchases` | `CompraRegistrada`, `CompraCorregida` | — |
@@ -182,6 +182,35 @@ Se usa un bus propio en vez de `@nestjs/event-emitter` porque aquel corre los
 listeners en paralelo y por defecto se traga sus errores. Aquí un handler
 `in-transaction` que falla debe abortar la transacción, y los handlers deben
 correr en orden sobre el mismo cliente transaccional.
+
+### Pagos: eventos y webhook
+
+`HandleWebhookUseCase` procesa la notificación de MercadoPago de forma
+**síncrona**, antes de responder. Todo pago `approved` termina en un pedido o
+en una alerta al admin; nunca se descarta en silencio. Los eventos viven en
+`payments/domain/payment-events.ts` y se exportan en `payments/public-api.ts`:
+
+| Evento | Cuándo se publica | Qué hace el suscriptor (todos `after-commit`) |
+|---|---|---|
+| `PagoAprobado` | El pago quedó `APROBADO` y el pedido se materializó (creado ya CONFIRMADO desde el `draftPayload`, o el pedido PENDIENTE existente confirmado) | `notifications`: correo con comprobante PDF al cliente y al admin; `meta-conversions`: reporta el Purchase. El PDF se genera en el handler, ya fuera de la transacción: un fallo del PDF solo evita los correos de ese evento, no revierte el pago ni el pedido |
+| `PagoSinPedido` | Llega un `approved` que no puede materializar pedido: sin `external_reference` o sin registro de pago, monto o moneda distintos de `payment.total` y `COP`, flujo viejo con el pedido ya no `PENDIENTE`, o fallo de negocio al crearlo (p. ej. sin stock) | `notifications`: alerta al admin con el motivo (`detalle`) |
+| `PagoDuplicado` | Llega un `approved` con `mpPaymentId` distinto sobre una fila ya `APROBADO` o `REEMBOLSADO` (el cliente pagó dos veces) | `notifications`: alerta al admin para reembolsar el segundo cobro |
+| `PagoReembolsado` | Transición `APROBADO → REEMBOLSADO` (MercadoPago reporta `refunded` o `charged_back`) | `notifications`: alerta al admin. No cancela el pedido: el admin decide |
+
+Reglas del procesamiento:
+
+- Los estados terminales de un pago son solo `APROBADO` y `REEMBOLSADO`;
+  `RECHAZADO` y `CANCELADO` no lo son porque el cliente puede reintentar y
+  pagar el mismo pedido. Un rechazo nunca cancela pedidos.
+- Respuesta HTTP: 200 si se procesó o la notificación no aplica, 401 si la
+  firma es inválida o su `ts` difiere más de 5 minutos del reloj del servidor,
+  y 500 ante cualquier fallo inesperado, para que MercadoPago reintente. Solo
+  los `DomainError` se convierten en alerta; el resto se propaga.
+- La transición a `APROBADO`, la creación del pedido y `linkToOrder` ocurren
+  dentro de **una** `uow.run`: si algo de negocio falla, esa transacción se
+  revierte y una segunda deja el pago `APROBADO` junto con el evento
+  `PagoSinPedido`. Es idempotente: una entrega repetida del mismo cobro no
+  produce nada nuevo.
 
 ## Cómo agregar algo
 
