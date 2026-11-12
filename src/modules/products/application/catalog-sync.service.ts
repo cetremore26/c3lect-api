@@ -27,7 +27,7 @@ export class CatalogSyncService {
 
   /** Volvió el stock: las variantes se habilitan de nuevo. */
   reponer(ref: ModeloRef & { nombreProducto: string | null }): Promise<void> {
-    return this.products.setDisponibilidadPorNombre(this.nombreDe(ref), true);
+    return this.products.habilitarPorNombre(this.nombreDe(ref));
   }
 
   // Si la compra corrigió marca/modelo, se renombra el producto existente en
@@ -77,7 +77,7 @@ export class CatalogSyncService {
     }
 
     const deshabilitadas = variantes
-      .filter((p) => !p.disponible)
+      .filter((p) => !p.disponible && !p.ocultoPorAdmin)
       .map((p) => p.id);
     if (deshabilitadas.length > 0) await this.products.enable(deshabilitadas);
 

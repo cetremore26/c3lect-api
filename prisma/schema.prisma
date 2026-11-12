@@ -35,6 +35,7 @@ model Product {
   genero              String?
   destacado           Boolean  @default(false)
   destacadoOrden      Int?     @map("destacado_orden")
+  ocultoPorAdmin      Boolean  @default(false) @map("oculto_por_admin")
 
   @@index([cat(ops: raw("gin_trgm_ops"))], type: Gin, map: "productos_cat_trgm_idx")
   @@index([marca(ops: raw("gin_trgm_ops"))], type: Gin, map: "productos_marca_trgm_idx")

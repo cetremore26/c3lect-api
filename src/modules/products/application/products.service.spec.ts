@@ -114,3 +114,41 @@ describe('ProductsService escrituras', () => {
     );
   });
 });
+
+describe('ProductsService ocultoPorAdmin', () => {
+  it('update fija ocultoPorAdmin al cambiar disponible', async () => {
+    const { service, repo } = makeService();
+    repo.findById.mockResolvedValue({ id: 'p1', disponible: true });
+    repo.update.mockResolvedValue({ id: 'p1', display: 'X' });
+    await service.update('p1', { disponible: false });
+    expect(repo.update).toHaveBeenCalledWith('p1', {
+      disponible: false,
+      ocultoPorAdmin: true,
+    });
+  });
+
+  it('update sin cambio de disponible no toca ocultoPorAdmin', async () => {
+    const { service, repo } = makeService();
+    repo.findById.mockResolvedValue({ id: 'p1', disponible: false });
+    repo.update.mockResolvedValue({ id: 'p1', display: 'X' });
+    await service.update('p1', { disponible: false, precio: 100 });
+    expect(repo.update.mock.calls[0][1]).not.toHaveProperty('ocultoPorAdmin');
+  });
+
+  it('create con disponible=false nace oculto por el admin', async () => {
+    const { service, repo } = makeService();
+    repo.create.mockResolvedValue({ id: 'p1', display: 'X' });
+    await service.create({
+      id: 'p1',
+      nombre: 'X',
+      estilo: 'Y',
+      display: 'X — Y',
+      precio: 100,
+      cat: 'reloj',
+      disponible: false,
+    });
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ ocultoPorAdmin: true }),
+    );
+  });
+});
