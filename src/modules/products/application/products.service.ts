@@ -30,14 +30,17 @@ export class ProductsService {
     @Inject(AUDIT_LOG) private readonly audit: AuditLogPort,
   ) {}
 
-  async findAll(query: ProductQuery) {
+  async findAll(query: ProductQuery, opts: { esAdmin: boolean }) {
     const {
       page: pageQuery,
       limit: limitQuery,
       sortBy,
       sortOrder,
-      ...filter
+      ...filtroBase
     } = query;
+    const filter: ProductFilter = opts.esAdmin
+      ? filtroBase
+      : { ...filtroBase, soloPublicados: true };
     const sort = { sortBy, sortOrder };
 
     if (pageQuery == null && limitQuery == null) {

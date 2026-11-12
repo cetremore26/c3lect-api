@@ -98,6 +98,8 @@ export interface ProductFilter {
   destacado?: boolean;
   /** Pendientes por completar: sin precio, imágenes o estilo. */
   incompletos?: boolean;
+  /** Solo publicados (disponibles) y completos. Lo fuerza el servicio a no-admin. */
+  soloPublicados?: boolean;
 }
 
 export interface ProductSort {
