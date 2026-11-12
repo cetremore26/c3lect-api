@@ -128,13 +128,16 @@ export interface OrderRepositoryPort {
   /** Crea el pedido directamente en CONFIRMADO, con su historial. */
   createConfirmed(data: NewOrderData, changedBy: string): Promise<CreatedOrder>;
 
-  /** Cambia el estado y agrega la fila de historial. */
+  /**
+   * Cambia el estado solo si el pedido sigue en `statusAnterior` y agrega la
+   * fila de historial. Devuelve `null` si otro proceso ya lo había cambiado.
+   */
   transitionStatus(params: {
     orderId: string;
     statusAnterior: EstadoPedido;
     statusNuevo: EstadoPedido;
     changedBy: string;
-  }): Promise<OrderForStatusTransition>;
+  }): Promise<OrderForStatusTransition | null>;
 
   /** Pedidos cuyo email de envío (sin distinguir mayúsculas) se creó desde `desde`. */
   countByShippingEmailSince(email: string, desde: Date): Promise<number>;

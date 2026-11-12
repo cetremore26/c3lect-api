@@ -160,14 +160,16 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
     statusAnterior: EstadoPedido;
     statusNuevo: EstadoPedido;
     changedBy: string;
-  }): Promise<OrderForStatusTransition> {
+  }): Promise<OrderForStatusTransition | null> {
     const { orderId, statusAnterior, statusNuevo, changedBy } = params;
     const client = this.db.client;
 
-    await client.order.update({
-      where: { id: orderId },
+    // Update condicional: si otro proceso ya movió el pedido, no aplica.
+    const { count } = await client.order.updateMany({
+      where: { id: orderId, status: statusAnterior },
       data: { status: statusNuevo },
     });
+    if (count === 0) return null;
     await client.orderStatusHistory.create({
       data: { orderId, statusAnterior, statusNuevo, changedBy },
     });

@@ -1,5 +1,6 @@
 import {
   BusinessRuleViolation,
+  ConflictError,
   NotFoundError,
 } from '../../../../shared/domain/domain-error';
 import { fakeEventBus, fakeUnitOfWork } from '../../../../shared/testing/fakes';
@@ -192,5 +193,32 @@ describe('UpdateOrderStatusUseCase', () => {
       expect.stringContaining('CONFIRMADO → EN_CAMINO'),
       'admin-1',
     );
+  });
+
+  it('lee el pedido dentro de la transaccion', async () => {
+    const { useCase, uow, orders } = makeUseCase(
+      makeOrder(EstadoPedido.PENDIENTE),
+    );
+    uow.run.mockImplementation(async (work) => {
+      expect(orders.findByIdForStatusTransition).not.toHaveBeenCalled();
+      return work();
+    });
+
+    await useCase.execute('order-1', EstadoPedido.CONFIRMADO, 'admin-1');
+
+    expect(orders.findByIdForStatusTransition).toHaveBeenCalledTimes(1);
+  });
+
+  it('si otro proceso cambió el estado antes, lanza ConflictError sin publicar', async () => {
+    const { useCase, orders, events, audit } = makeUseCase(
+      makeOrder(EstadoPedido.PENDIENTE),
+    );
+    orders.transitionStatus.mockResolvedValue(null);
+
+    await expect(
+      useCase.execute('order-1', EstadoPedido.CONFIRMADO, 'admin-1'),
+    ).rejects.toThrow(ConflictError);
+    expect(events.publish).not.toHaveBeenCalled();
+    expect(audit.log).not.toHaveBeenCalled();
   });
 });
