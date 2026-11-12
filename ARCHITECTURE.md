@@ -60,8 +60,8 @@ adaptador, y TypeScript avisa si DTO y comando se desincronizan.
 | Promociones | `promotions` | `promotions` | — | — |
 | Pedidos | `orders` | `orders`, `order_items`, `shipping_info`, `order_status_history` | `PedidoCreado`, `PedidoConfirmado`, `ConfirmacionDePedidoRevertida`, `EstadoDePedidoCambiado` | `UsuarioRegistrado` |
 | Pagos | `payments` | `payments` | `PagoAprobado`, `PagoSinPedido` | — |
-| Inventario | `inventario` | `inventario_maestro` | `StockAgotado`, `StockRepuesto`, `MercanciaIngresada`, `SalidaPorPedidoRegistrada`, `InventarioRecalculado` | `PedidoConfirmado`, `ConfirmacionDePedidoRevertida`, `VentaManualRegistrada`, `VentaEliminada`, `CompraRegistrada`, `CompraCorregida` |
-| Ventas | `ventas` | `historical_sales` | `VentaManualRegistrada`, `VentaEliminada` | `SalidaPorPedidoRegistrada`, `ConfirmacionDePedidoRevertida` |
+| Inventario | `inventario` | `inventario_maestro` | `StockAgotado`, `StockRepuesto`, `MercanciaIngresada`, `SalidaPorPedidoRegistrada`, `InventarioRecalculado` | `PedidoConfirmado`, `VentasDePedidoAnuladas`, `VentaManualRegistrada`, `VentaEliminada`, `CompraRegistrada`, `CompraCorregida` |
+| Ventas | `ventas` | `historical_sales` | `VentaManualRegistrada`, `VentaEliminada`, `VentasDePedidoAnuladas` | `SalidaPorPedidoRegistrada`, `ConfirmacionDePedidoRevertida` |
 | Compras | `compras` | `purchases` | `CompraRegistrada`, `CompraCorregida` | — |
 | Gastos | `gastos` | `expenses` | — | — |
 | Reseñas | `resenas` | `resenas` | — | — (consulta pedidos e identidad por sus fachadas) |
@@ -151,6 +151,8 @@ UpdateOrderStatusUseCase (uow.run)
 │       └─ publish SalidaPorPedidoRegistrada    [in-tx] → ventas registra las ventas
 └─ publish EstadoDePedidoCambiado    [after-commit] → notificaciones manda correos
 ```
+
+El inverso: `cancelar CONFIRMADO → ConfirmacionDePedidoRevertida [in-tx] → ventas borra sus filas → VentasDePedidoAnuladas [in-tx] → inventario repone`.
 
 Si inventario lanza "stock insuficiente", no queda ni el cambio de estado, ni
 ventas, ni correo.

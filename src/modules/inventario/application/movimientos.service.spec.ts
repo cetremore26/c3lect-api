@@ -126,13 +126,21 @@ describe('MovimientosService.salidaPorPedido', () => {
 });
 
 describe('MovimientosService.revertirSalidaPorPedido', () => {
-  it('devuelve el stock reservado y avisa que hay stock de nuevo', async () => {
+  it('revertirSalidaPorPedido repone por modelo con fallback "Marca Modelo" e incremento por id', async () => {
     const { service, repo, events } = makeService();
-
-    await service.revertirSalidaPorPedido(pedido.lineas);
-
+    await service.revertirSalidaPorPedido([
+      { marca: 'Rolex', modelo: 'Submariner', cantidad: 2 },
+    ]);
+    expect(repo.buscarPorModelo).toHaveBeenCalledWith(
+      'Submariner',
+      'Rolex Submariner',
+    );
     expect(repo.incrementar).toHaveBeenCalledWith('inv-1', 2);
-    expect(events.of(StockRepuesto)).toHaveLength(1);
+    expect(events.of(StockRepuesto)[0].ref).toEqual({
+      marca: 'Rolex',
+      modelo: 'Submariner',
+      nombreProducto: null,
+    });
   });
 });
 

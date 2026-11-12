@@ -72,18 +72,16 @@ export class PedidoConfirmado implements DomainEvent {
   ) {}
 }
 
-/** Se canceló un pedido que ya había sido confirmado: hay que deshacer sus efectos. */
+/**
+ * Se canceló un pedido que ya había sido confirmado: hay que deshacer sus
+ * efectos. No lleva líneas: lo realmente despachado lo sabe ventas (sus filas
+ * del pedido), no el catálogo actual.
+ */
 export class ConfirmacionDePedidoRevertida implements DomainEvent {
   static readonly NAME = 'orders.confirmacion-revertida';
   readonly name = ConfirmacionDePedidoRevertida.NAME;
 
-  constructor(
-    readonly pedido: {
-      orderId: string;
-      orderNumber: string;
-      lineas: LineaInventariable[];
-    },
-  ) {}
+  constructor(readonly pedido: { orderId: string; orderNumber: string }) {}
 }
 
 export class EstadoDePedidoCambiado implements DomainEvent {

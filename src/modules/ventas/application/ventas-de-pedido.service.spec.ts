@@ -1,12 +1,16 @@
+import { fakeEventBus } from '../../../shared/testing/fakes';
+import { VentasDePedidoAnuladas } from '../domain/venta-events';
 import { VentasDePedidoService } from './ventas-de-pedido.service';
 
 function makeService() {
   const repo = {
     createMany: jest.fn(),
+    findByOrderId: jest.fn().mockResolvedValue([]),
     removeByOrderId: jest.fn(),
   };
-  const service = new VentasDePedidoService(repo as any);
-  return { service, repo };
+  const events = fakeEventBus();
+  const service = new VentasDePedidoService(repo as any, events);
+  return { service, repo, events };
 }
 
 describe('VentasDePedidoService', () => {
@@ -73,11 +77,24 @@ describe('VentasDePedidoService', () => {
     );
   });
 
-  it('anular borra todas las ventas del pedido', async () => {
-    const { service, repo } = makeService();
-
+  it('anular borra las ventas del pedido y publica lo despachado agrupado', async () => {
+    const { service, repo, events } = makeService();
+    repo.findByOrderId.mockResolvedValue([
+      { marca: 'Rolex', modelo: 'Submariner' },
+      { marca: 'Rolex', modelo: 'Submariner' },
+    ]);
     await service.anular('order-1');
-
     expect(repo.removeByOrderId).toHaveBeenCalledWith('order-1');
+    expect(events.of(VentasDePedidoAnuladas)[0].anulacion).toEqual({
+      orderId: 'order-1',
+      lineas: [{ marca: 'Rolex', modelo: 'Submariner', cantidad: 2 }],
+    });
+  });
+
+  it('anular sin ventas no publica nada', async () => {
+    const { service, repo, events } = makeService();
+    repo.findByOrderId.mockResolvedValue([]);
+    await service.anular('order-1');
+    expect(events.publish).not.toHaveBeenCalled();
   });
 });

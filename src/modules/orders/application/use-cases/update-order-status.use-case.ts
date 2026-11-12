@@ -85,7 +85,6 @@ export class UpdateOrderStatusUseCase {
           new ConfirmacionDePedidoRevertida({
             orderId: id,
             orderNumber: updated.orderNumber,
-            lineas: await toLineasInventariables(this.catalog, updated.items),
           }),
         );
       }

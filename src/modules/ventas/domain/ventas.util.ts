@@ -7,6 +7,24 @@ export function calcularSaldoPendiente(
   return precioVenta > 0 ? Math.max(0, precioVenta - abono) : 0;
 }
 
+// Las ventas de plataforma se guardan una fila por unidad: esto las vuelve a
+// juntar en líneas (marca, modelo, cantidad), en orden de primera aparición.
+export function agruparUnidadesPorModelo(
+  ventas: { marca: string | null; modelo: string }[],
+): { marca: string | null; modelo: string; cantidad: number }[] {
+  const lineas = new Map<
+    string,
+    { marca: string | null; modelo: string; cantidad: number }
+  >();
+  for (const { marca, modelo } of ventas) {
+    const clave = JSON.stringify([marca ?? '', modelo]);
+    const linea = lineas.get(clave);
+    if (linea) linea.cantidad += 1;
+    else lineas.set(clave, { marca, modelo, cantidad: 1 });
+  }
+  return [...lineas.values()];
+}
+
 const CANALES_DIGITALES = ['WhatsApp', 'Instagram'];
 
 // Le devuelve a Meta la señal de las ventas que se cierran por chat — sin

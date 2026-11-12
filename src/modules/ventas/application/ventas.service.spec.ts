@@ -6,6 +6,7 @@ import { VentasService } from './ventas.service';
 function makeService() {
   const repository = {
     findById: jest.fn(),
+    findByOrderId: jest.fn(),
     create: jest.fn(),
     createMany: jest.fn(),
     update: jest.fn(),

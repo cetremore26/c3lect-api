@@ -3,13 +3,11 @@ import { EVENT_BUS } from '../../../../shared/application/ports/event-bus.port';
 import type { EventBusPort } from '../../../../shared/application/ports/event-bus.port';
 import { MovimientosService } from '../../application/movimientos.service';
 import { CompraCorregida, CompraRegistrada } from '../../../compras/public-api';
-import {
-  ConfirmacionDePedidoRevertida,
-  PedidoConfirmado,
-} from '../../../orders/public-api';
+import { PedidoConfirmado } from '../../../orders/public-api';
 import {
   VentaEliminada,
   VentaManualRegistrada,
+  VentasDePedidoAnuladas,
 } from '../../../ventas/public-api';
 
 // Adaptador de entrada: hechos de pedidos, ventas y compras → movimientos de
@@ -29,8 +27,9 @@ export class InventarioEventSubscribers implements OnModuleInit {
       'in-transaction',
     );
     this.events.subscribe(
-      ConfirmacionDePedidoRevertida,
-      ({ pedido }) => this.movimientos.revertirSalidaPorPedido(pedido.lineas),
+      VentasDePedidoAnuladas,
+      ({ anulacion }) =>
+        this.movimientos.revertirSalidaPorPedido(anulacion.lineas),
       'in-transaction',
     );
     this.events.subscribe(

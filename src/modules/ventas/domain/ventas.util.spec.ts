@@ -1,4 +1,5 @@
 import {
+  agruparUnidadesPorModelo,
   calcularSaldoPendiente,
   esElegibleParaMetaOffline,
   planVentaUpdate,
@@ -133,5 +134,20 @@ describe('planVentaUpdate', () => {
   it('sin fecha en el dto, conserva la existente', () => {
     const plan = planVentaUpdate(existente, {});
     expect(plan.fecha).toBe(existente.fecha);
+  });
+});
+
+describe('agruparUnidadesPorModelo', () => {
+  it('agrupa unidades por marca y modelo', () => {
+    expect(
+      agruparUnidadesPorModelo([
+        { marca: 'Rolex', modelo: 'Submariner' },
+        { marca: 'Rolex', modelo: 'Submariner' },
+        { marca: null, modelo: 'Organizador' },
+      ]),
+    ).toEqual([
+      { marca: 'Rolex', modelo: 'Submariner', cantidad: 2 },
+      { marca: null, modelo: 'Organizador', cantidad: 1 },
+    ]);
   });
 });

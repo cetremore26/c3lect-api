@@ -87,24 +87,19 @@ export class MovimientosService {
     }
   }
 
-  async revertirSalidaPorPedido(lineas: LineaASacar[]): Promise<void> {
+  /**
+   * Cancelación de un pedido confirmado: repone lo que ventas tenía
+   * registrado como despachado (nunca lo que diga el catálogo hoy).
+   */
+  async revertirSalidaPorPedido(
+    lineas: (ModeloRef & { cantidad: number })[],
+  ): Promise<void> {
     for (const linea of lineas) {
-      const item = await this.inventario.buscarPorModelo(
-        linea.modelo,
-        linea.nombre,
+      await this.reponer(
+        { marca: linea.marca, modelo: linea.modelo },
+        linea.cantidad,
+        combineMarcaModelo(linea.marca, linea.modelo),
       );
-      if (!item) continue;
-
-      const stock = await this.inventario.incrementar(item.id, linea.cantidad);
-      if (stock > 0) {
-        await this.events.publish(
-          new StockRepuesto({
-            marca: linea.marca,
-            modelo: linea.modelo,
-            nombreProducto: linea.nombre,
-          }),
-        );
-      }
     }
   }
 
@@ -169,6 +164,25 @@ export class MovimientosService {
         ? { marca: c.anterior.marca, modelo: c.anterior.modelo }
         : null,
     );
+  }
+
+  private async reponer(
+    ref: ModeloRef,
+    cantidad: number,
+    nombreLegado: string,
+  ): Promise<void> {
+    const item = await this.inventario.buscarPorModelo(
+      ref.modelo,
+      nombreLegado,
+    );
+    if (!item) return; // modelo no rastreado (o ya borrado del inventario)
+
+    const stock = await this.inventario.incrementar(item.id, cantidad);
+    if (stock > 0) {
+      await this.events.publish(
+        new StockRepuesto({ ...ref, nombreProducto: null }),
+      );
+    }
   }
 
   private async publicarIngreso(

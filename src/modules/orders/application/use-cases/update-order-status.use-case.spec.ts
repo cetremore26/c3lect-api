@@ -81,7 +81,7 @@ function makeUseCase(order: ReturnType<typeof makeOrder> | null) {
     events,
     audit,
   );
-  return { useCase, orders, uow, events, audit };
+  return { useCase, orders, catalog, uow, events, audit };
 }
 
 describe('UpdateOrderStatusUseCase', () => {
@@ -138,11 +138,19 @@ describe('UpdateOrderStatusUseCase', () => {
   });
 
   it('al cancelar un pedido ya CONFIRMADO, publica ConfirmacionDePedidoRevertida', async () => {
-    const { useCase, events } = makeUseCase(makeOrder(EstadoPedido.CONFIRMADO));
+    const { useCase, events, catalog } = makeUseCase(
+      makeOrder(EstadoPedido.CONFIRMADO),
+    );
 
     await useCase.execute('order-1', EstadoPedido.CANCELADO, 'admin-1');
 
     expect(events.of(ConfirmacionDePedidoRevertida)).toHaveLength(1);
+    // Lo despachado lo saben ventas/inventario: no se re-resuelve el catálogo.
+    expect(events.of(ConfirmacionDePedidoRevertida)[0].pedido).toEqual({
+      orderId: 'order-1',
+      orderNumber: 'C3L-20260101-ABCDE',
+    });
+    expect(catalog.findByIds).not.toHaveBeenCalled();
     expect(events.of(PedidoConfirmado)).toHaveLength(0);
   });
 
