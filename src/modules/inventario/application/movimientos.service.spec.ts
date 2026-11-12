@@ -184,11 +184,23 @@ describe('MovimientosService ventas manuales', () => {
 
     await service.revertirVentaManual(ref);
 
-    expect(repo.ajustarStockPorModelo).toHaveBeenCalledWith('Submariner', 1);
+    expect(repo.incrementar).toHaveBeenCalledWith('inv-1', 1);
     expect(events.of(StockRepuesto)[0].ref).toEqual({
       ...ref,
       nombreProducto: null,
     });
+  });
+
+  it('revertirVentaManual busca sin distinguir mayúsculas e incrementa por id', async () => {
+    const { service, repo, events } = makeService();
+    await service.revertirVentaManual({ marca: 'Rolex', modelo: 'submariner' });
+    expect(repo.buscarPorModelo).toHaveBeenCalledWith(
+      'submariner',
+      'submariner',
+    );
+    expect(repo.incrementar).toHaveBeenCalledWith('inv-1', 1);
+    expect(repo.ajustarStockPorModelo).not.toHaveBeenCalled();
+    expect(events.of(StockRepuesto)).toHaveLength(1);
   });
 
   it('si el modelo no esta en inventario, no intenta re-habilitar nada', async () => {

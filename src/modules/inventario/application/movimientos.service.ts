@@ -123,13 +123,7 @@ export class MovimientosService {
 
   /** Se borró una venta manual: vuelve la unidad. */
   async revertirVentaManual(ref: ModeloRef): Promise<void> {
-    await this.inventario.ajustarStockPorModelo(ref.modelo, 1);
-    const item = await this.inventario.findByModelo(ref.modelo);
-    if (item && item.stock > 0) {
-      await this.events.publish(
-        new StockRepuesto({ ...ref, nombreProducto: null }),
-      );
-    }
+    await this.reponer(ref, 1, ref.modelo);
   }
 
   async ingresoPorCompra(compra: IngresoData): Promise<void> {
