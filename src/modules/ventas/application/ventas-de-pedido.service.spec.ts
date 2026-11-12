@@ -16,7 +16,7 @@ function makeService() {
 describe('VentasDePedidoService', () => {
   afterEach(() => jest.useRealTimers());
 
-  it('la fecha de la venta es el d�a de Bogot�', async () => {
+  it('la fecha de la venta es el día de Bogotá', async () => {
     jest.useFakeTimers().setSystemTime(new Date('2026-11-11T03:30:00Z'));
     const { service, repo } = makeService();
 
