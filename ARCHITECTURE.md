@@ -31,6 +31,27 @@ modules/<contexto>/
 | `application` | su dominio, sus puertos, `shared/domain`, `shared/application`; de `@nestjs/common` solo `Injectable`, `Inject`, `Logger` | `@prisma/*`, `@nestjs/config`, infrastructure, **cualquier otro módulo** |
 | `infrastructure` | todo lo anterior, frameworks, la `public-api` de otros módulos | internals de otros módulos |
 
+### Casos de uso y servicios de aplicación
+
+`application/` admite **dos formas**, con las mismas reglas de dependencia
+(solo puertos, sin Prisma):
+
+- **Servicio de aplicación** (`application/<nombre>.service.ts`): una clase
+  `@Injectable` con varios métodos. Es la forma válida para CRUD simple y
+  consultas sin coordinación entre contextos. Ejemplos reales:
+  `compras.service.ts`, `gastos.service.ts`, `marcas.service.ts`.
+- **Caso de uso** (`application/use-cases/<verbo>-<sustantivo>.use-case.ts`):
+  una clase con un método. Se reserva para flujos con **transacción y
+  eventos**. Ejemplos: `UpdateOrderStatusUseCase`, `HandleWebhookUseCase`.
+
+Criterio de elección: si el flujo abre `uow.run` o publica eventos de dominio,
+es un caso de uso; si solo lee y escribe tablas propias, es un servicio.
+
+Los tipos de entrada que define el dominio se llaman `…Cambios` o `…Comando`,
+nunca `…Dto`: el sufijo Dto queda para `infrastructure/http/dto`
+(por ejemplo `CompraCambios` y `VentaCambios`, que implementan los DTOs de
+actualización).
+
 Los errores de negocio se lanzan como `DomainError` (`shared/domain/domain-error.ts`):
 `BusinessRuleViolation` (400), `UnauthorizedError` (401), `ForbiddenError` (403),
 `NotFoundError` (404), `ConflictError` (409). `GlobalExceptionFilter` los
@@ -167,6 +188,10 @@ correr en orden sobre el mismo cliente transaccional.
 **Un caso de uso nuevo en un módulo existente:** la regla va en `domain/` (y
 su spec), la orquestación en `application/use-cases/` con sus dependencias
 como puertos, y el controller en `infrastructure/http/` llama al caso de uso.
+Antes de crear el archivo aplica el criterio de
+[Casos de uso y servicios de aplicación](#casos-de-uso-y-servicios-de-aplicación):
+un CRUD simple es un método más del servicio del módulo; solo un flujo
+transaccional o que publica eventos va en `use-cases/`.
 
 **Necesito datos de otro módulo:** no importes su repositorio. Define un
 puerto en tu `application/ports/`, agrega el método a la fachada del otro
