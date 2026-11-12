@@ -57,7 +57,7 @@ El cambio de estado del pedido, el descuento de stock y el registro de ventas vi
 `POST /payments/create-pending` cotiza el carrito y genera la preferencia de MercadoPago **sin crear el pedido**. El pedido solo nace —ya confirmado— cuando el webhook informa que el pago fue aprobado. Resultado: un checkout abandonado o rechazado no deja pedidos huérfanos ensuciando la base ni el inventario.
 
 **Webhook a prueba de reintentos.**
-El endpoint procesa la notificación **antes** de responder: `200` si se procesó o no aplica, `401` si la firma es inválida y `500` ante un fallo inesperado, para que MercadoPago reintente. Es idempotente (una entrega repetida no duplica pedidos). La firma `x-signature` se compara con `timingSafeEqual` y debe caer dentro de una ventana de 5 minutos. Se verifican monto y moneda contra el total del pago. Un doble cobro o un reembolso no se ignoran: generan una alerta al admin (ver [Pagos: eventos y webhook](ARCHITECTURE.md#pagos-eventos-y-webhook)).
+El endpoint procesa la notificación **antes** de responder: `200` si se procesó o no aplica, `401` si la firma es inválida y `500` ante un fallo inesperado, para que MercadoPago reintente. Es idempotente (una entrega repetida no duplica pedidos). La firma `x-signature` se compara con `timingSafeEqual` y debe caer dentro de una ventana de 72 horas (MercadoPago reutiliza la firma en los reintentos). Se verifican monto y moneda contra el total del pago. Un doble cobro o un reembolso no se ignoran: generan una alerta al admin (ver [Pagos: eventos y webhook](ARCHITECTURE.md#pagos-eventos-y-webhook)).
 
 **Respuestas que no filtran información.**
 `request-otp` y `request-password-reset` devuelven siempre la misma respuesta exista o no el correo. Sumado al throttling por ruta (8 intentos/minuto en rutas sensibles) y a un límite de códigos por email (3 cada 15 minutos), cierra la enumeración de usuarios. En el login, un usuario inexistente igual verifica contra un hash Argon2 ficticio para igualar tiempos de respuesta.
@@ -256,13 +256,17 @@ pnpm format        # prettier
 
 Orden y verificaciones para publicar esta versión (auth con código y 2FA, pagos con alertas, RLS versionado):
 
-1. **Primero el frontend, luego la API.** El front nuevo funciona con la API vieja, pero no al revés.
-2. **Antes de desplegar la API**, en Supabase (solo lectura):
+Mergear a `main` despliega solo (Render), y el código nuevo necesita las columnas nuevas. Sigue este orden:
+
+1. **Mergea el PR del frontend** y espera a que quede publicado. El front nuevo funciona con la API vieja.
+2. **Verifica los emails duplicados** en el editor SQL de Supabase (solo lectura):
    ```sql
    select lower(trim(email)), count(*) from users group by 1 having count(*) > 1;
    ```
-   Si devuelve filas, resuelve esos usuarios a mano: si no, la migración `20261110000100_emails_minusculas` aborta.
-3. **Aplica la migración de RLS** (`20261110000200_rls_versionado`) en un momento tranquilo: toma un `ACCESS EXCLUSIVE` breve por tabla. Después repite las dos consultas de verificación (las mismas que corre `src/shared/infrastructure/prisma/rls.int-spec.ts`) y espera cero filas en ambas:
+   Si devuelve filas, resuelve esos usuarios antes de seguir: si no, la migración `20261110000100_emails_minusculas` aborta.
+3. **ANTES de mergear el PR de la API**, aplica las migraciones a producción en un momento tranquilo (`prisma migrate deploy` con el `DATABASE_URL` de producción, o confirma que el build command de Render lo corre antes del arranque). La API vieja es compatible con el esquema nuevo (las columnas nuevas tienen valores por defecto), pero el código nuevo falla sin ellas. La migración de RLS (`20261110000200_rls_versionado`) toma un `ACCESS EXCLUSIVE` breve por tabla.
+4. **Mergea el PR de la API** (se despliega solo).
+5. **Repite las dos consultas de verificación de RLS** (las mismas que corre `src/shared/infrastructure/prisma/rls.int-spec.ts`) y espera cero filas en ambas:
    ```sql
    -- tablas de public sin RLS
    SELECT c.relname FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -273,10 +277,16 @@ Orden y verificaciones para publicar esta versión (auth con código y 2FA, pago
    WHERE table_schema = 'public' AND grantee IN ('anon', 'authenticated')
      AND NOT (table_name IN ('catalogo_publico', 'resenas_publicas') AND privilege_type = 'SELECT');
    ```
-4. **Tras desplegar la API**, el admin cierra sesión una vez: se invalidan las sesiones anteriores al 2FA.
-5. **Vuelve a ocultar en el panel admin** cualquier producto que estuviera oculto a propósito: el nuevo flag `ocultoPorAdmin` parte en `false`.
-6. Los enlaces de restablecimiento de contraseña emitidos por la API anterior dejan de funcionar (impacto de 15 minutos como máximo).
-7. **Comprobaciones manuales:** registro con código, login de admin con 2FA, restablecimiento de contraseña completo y una compra en el sandbox de MercadoPago con un primer intento rechazado y luego aprobado.
+6. **Revoca las sesiones de admin abiertas antes del 2FA** (no tienen segundo factor detrás):
+   ```sql
+   delete from refresh_tokens where user_id in (select id from users where rol = 'ADMIN');
+   ```
+7. **Marca los productos que ya estaban ocultos a propósito.** El flag `oculto_por_admin` parte en `false`; si los alternas desde el panel, quedarían publicados un instante.
+   ```sql
+   update productos set oculto_por_admin = true where id in (...);
+   ```
+8. Los enlaces de restablecimiento de contraseña emitidos por la API anterior dejan de funcionar (impacto de 15 minutos como máximo).
+9. **Comprobaciones manuales:** registro con código, login de admin con 2FA, restablecimiento de contraseña completo, una compra en el sandbox de MercadoPago con un primer intento rechazado y luego aprobado, y un reintento de webhook (fuerza un 500 una vez o revisa el panel "Reintentos" de MercadoPago) para confirmar que los reintentos se procesan.
 
 ---
 
