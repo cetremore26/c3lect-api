@@ -47,10 +47,14 @@ export interface MailerPort {
     nuevoStatus: string,
     clienteNombre: string,
   ): Promise<void>;
-  sendStockAlert(
+  sendPaymentAlert(
     adminEmail: string,
-    orderNumber: string,
-    detalle: string,
+    alerta: {
+      asunto: string;
+      titulo: string;
+      orderNumber: string;
+      detalle: string;
+    },
   ): Promise<void>;
 }
 

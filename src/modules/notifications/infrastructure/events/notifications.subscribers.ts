@@ -11,7 +11,12 @@ import {
   EstadoDePedidoCambiado,
   PedidoCreado,
 } from '../../../orders/public-api';
-import { PagoAprobado, PagoSinPedido } from '../../../payments/public-api';
+import {
+  PagoAprobado,
+  PagoDuplicado,
+  PagoReembolsado,
+  PagoSinPedido,
+} from '../../../payments/public-api';
 
 // Todos `after-commit`: un correo nunca debe salir por una operación que
 // terminó en rollback, y nunca debe frenar ni tumbar la respuesta.
@@ -41,6 +46,16 @@ export class NotificationsSubscribers implements OnModuleInit {
     this.events.subscribe(
       PagoSinPedido,
       ({ incidente }) => this.notifications.pagoSinPedido(incidente),
+      'after-commit',
+    );
+    this.events.subscribe(
+      PagoDuplicado,
+      ({ cobro }) => this.notifications.pagoDuplicado(cobro),
+      'after-commit',
+    );
+    this.events.subscribe(
+      PagoReembolsado,
+      ({ reembolso }) => this.notifications.pagoReembolsado(reembolso),
       'after-commit',
     );
     this.events.subscribe(

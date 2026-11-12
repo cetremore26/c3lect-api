@@ -293,6 +293,7 @@ describe('HandleWebhookUseCase', () => {
 
       expect(ctx.events.of(PagoSinPedido)[0].incidente).toEqual({
         orderNumber: existingPayment.orderNumber,
+        mpPaymentId: 'mp-1',
         detalle: 'Stock insuficiente',
       });
       expect(ctx.events.of(PagoAprobado)).toHaveLength(0);
@@ -364,6 +365,7 @@ describe('HandleWebhookUseCase', () => {
 
       expect(ctx.events.of(PagoSinPedido)[0].incidente).toEqual({
         orderNumber: existingPayment.orderNumber,
+        mpPaymentId: 'mp-1',
         detalle: 'DB caida',
       });
       expect(ctx.events.of(PagoAprobado)).toHaveLength(0);

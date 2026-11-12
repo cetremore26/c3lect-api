@@ -12,7 +12,7 @@ function makeService(adminEmail?: string) {
     sendPaymentConfirmation: jest.fn(),
     sendNewOrderAdmin: jest.fn(),
     sendOrderStatusUpdateAdmin: jest.fn(),
-    sendStockAlert: jest.fn(),
+    sendPaymentAlert: jest.fn(),
   };
   const voucher = { generate: jest.fn().mockResolvedValue(pdf) };
   const service = new NotificationsService(
@@ -185,19 +185,98 @@ describe('NotificationsService', () => {
     });
   });
 
-  it('pago sin pedido: alerta al admin si esta configurado, si no a nadie', async () => {
+  it('pago sin pedido: alerta al admin con el motivo y el pago de MercadoPago', async () => {
     const conAdmin = makeService('admin@c3lect.com');
     const sinAdmin = makeService();
-    const incidente = { orderNumber: 'C3L-1', detalle: 'Stock insuficiente' };
+    const incidente = {
+      orderNumber: 'C3L-1',
+      mpPaymentId: 'mp-1',
+      detalle: 'Stock insuficiente',
+    };
 
     await conAdmin.service.pagoSinPedido(incidente);
     await sinAdmin.service.pagoSinPedido(incidente);
 
-    expect(conAdmin.mail.sendStockAlert).toHaveBeenCalledWith(
+    expect(conAdmin.mail.sendPaymentAlert).toHaveBeenCalledWith(
       'admin@c3lect.com',
-      'C3L-1',
-      'Stock insuficiente',
+      {
+        asunto: '⚠️ Atención requerida — pago #C3L-1 sin pedido',
+        titulo: 'Pago aprobado sin pedido',
+        orderNumber: 'C3L-1',
+        detalle: 'Stock insuficiente\nPago de MercadoPago: mp-1',
+      },
     );
-    expect(sinAdmin.mail.sendStockAlert).not.toHaveBeenCalled();
+    expect(sinAdmin.mail.sendPaymentAlert).not.toHaveBeenCalled();
+  });
+
+  describe('pago duplicado: pide reembolsar el segundo cobro', () => {
+    it('nombra el pago anterior', async () => {
+      const { service, mail } = makeService('admin@c3lect.com');
+
+      await service.pagoDuplicado({
+        orderNumber: 'C3L-1',
+        mpPaymentId: 'mp-2',
+        mpPaymentIdAnterior: 'mp-1',
+      });
+
+      expect(mail.sendPaymentAlert).toHaveBeenCalledWith('admin@c3lect.com', {
+        asunto: '⚠️ Doble cobro — pedido #C3L-1',
+        titulo: 'Pago duplicado: hay que reembolsar',
+        orderNumber: 'C3L-1',
+        detalle:
+          'MercadoPago aprobó el pago mp-2, pero el pedido ya estaba pagado con mp-1. Reembolsa mp-2 desde el panel de MercadoPago.',
+      });
+    });
+
+    it('sin pago anterior dice "con otro pago"', async () => {
+      const { service, mail } = makeService('admin@c3lect.com');
+
+      await service.pagoDuplicado({
+        orderNumber: 'C3L-1',
+        mpPaymentId: 'mp-2',
+        mpPaymentIdAnterior: null,
+      });
+
+      expect(mail.sendPaymentAlert.mock.calls[0][1].detalle).toContain(
+        'ya estaba pagado con otro pago.',
+      );
+    });
+
+    it('sin admin no manda nada', async () => {
+      const { service, mail } = makeService();
+
+      await service.pagoDuplicado({
+        orderNumber: 'C3L-1',
+        mpPaymentId: 'mp-2',
+        mpPaymentIdAnterior: null,
+      });
+
+      expect(mail.sendPaymentAlert).not.toHaveBeenCalled();
+    });
+  });
+
+  it('pago reembolsado: avisa sin cancelar el pedido', async () => {
+    const conAdmin = makeService('admin@c3lect.com');
+    const sinAdmin = makeService();
+    const reembolso = {
+      orderNumber: 'C3L-1',
+      mpPaymentId: 'mp-1',
+      estadoMp: 'charged_back',
+    };
+
+    await conAdmin.service.pagoReembolsado(reembolso);
+    await sinAdmin.service.pagoReembolsado(reembolso);
+
+    expect(conAdmin.mail.sendPaymentAlert).toHaveBeenCalledWith(
+      'admin@c3lect.com',
+      {
+        asunto: '⚠️ Pago reembolsado — pedido #C3L-1',
+        titulo: 'Pago reembolsado o contracargo',
+        orderNumber: 'C3L-1',
+        detalle:
+          'MercadoPago marcó el pago mp-1 como charged_back. El pedido no se canceló automáticamente: revisa si ya se envió y decide.',
+      },
+    );
+    expect(sinAdmin.mail.sendPaymentAlert).not.toHaveBeenCalled();
   });
 });

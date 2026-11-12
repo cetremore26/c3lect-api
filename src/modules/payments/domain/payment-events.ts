@@ -45,5 +45,45 @@ export class PagoSinPedido implements DomainEvent {
   static readonly NAME = 'payments.pago-sin-pedido';
   readonly name = PagoSinPedido.NAME;
 
-  constructor(readonly incidente: { orderNumber: string; detalle: string }) {}
+  constructor(
+    readonly incidente: {
+      orderNumber: string;
+      mpPaymentId: string;
+      detalle: string;
+    },
+  ) {}
+}
+
+/**
+ * MercadoPago aprobó un segundo pago para un pedido que ya estaba pagado:
+ * el cliente pagó dos veces y el admin debe reembolsar el segundo cobro.
+ */
+export class PagoDuplicado implements DomainEvent {
+  static readonly NAME = 'payments.pago-duplicado';
+  readonly name = PagoDuplicado.NAME;
+
+  constructor(
+    readonly cobro: {
+      orderNumber: string;
+      mpPaymentId: string;
+      mpPaymentIdAnterior: string | null;
+    },
+  ) {}
+}
+
+/**
+ * MercadoPago reembolsó o contracargó un pago. El pedido no se cancela solo:
+ * el admin decide qué hacer.
+ */
+export class PagoReembolsado implements DomainEvent {
+  static readonly NAME = 'payments.pago-reembolsado';
+  readonly name = PagoReembolsado.NAME;
+
+  constructor(
+    readonly reembolso: {
+      orderNumber: string;
+      mpPaymentId: string;
+      estadoMp: string;
+    },
+  ) {}
 }

@@ -101,7 +101,11 @@ export class HandleWebhookUseCase {
       if (!applied) return; // ya procesado por otra entrega del webhook
 
       if (nuevoEstado === EstadoPago.APROBADO) {
-        await this.handleApproved(orderNumber, existingPayment);
+        await this.handleApproved(
+          orderNumber,
+          existingPayment,
+          String(mpPaymentId),
+        );
       } else if (
         nuevoEstado === EstadoPago.RECHAZADO ||
         nuevoEstado === EstadoPago.CANCELADO
@@ -116,10 +120,15 @@ export class HandleWebhookUseCase {
   private async handleApproved(
     orderNumber: string,
     payment: Payment,
+    mpPaymentId: string,
   ): Promise<void> {
     const order = payment.orderId
-      ? await this.confirmarPedidoExistente(orderNumber, payment.orderId)
-      : await this.materializarPedido(orderNumber, payment);
+      ? await this.confirmarPedidoExistente(
+          orderNumber,
+          mpPaymentId,
+          payment.orderId,
+        )
+      : await this.materializarPedido(orderNumber, mpPaymentId, payment);
     if (!order) return;
 
     await this.events.publish(
@@ -139,6 +148,7 @@ export class HandleWebhookUseCase {
   // vivo por si se genera un link de pago para un pedido existente.
   private async confirmarPedidoExistente(
     orderNumber: string,
+    mpPaymentId: string,
     orderId: string,
   ): Promise<PedidoParaPago | null> {
     const existing = await this.orders.findForPayment(orderId);
@@ -149,6 +159,7 @@ export class HandleWebhookUseCase {
     } catch (err) {
       await this.reportarPagoSinPedido(
         orderNumber,
+        mpPaymentId,
         `Pago aprobado pero no se pudo confirmar el pedido ${orderNumber}`,
         err,
       );
@@ -162,6 +173,7 @@ export class HandleWebhookUseCase {
   // confirmación, a partir de los datos congelados en draftPayload.
   private async materializarPedido(
     orderNumber: string,
+    mpPaymentId: string,
     payment: Payment,
   ): Promise<PedidoParaPago | null> {
     const draft = payment.draftPayload;
@@ -189,6 +201,7 @@ export class HandleWebhookUseCase {
       // por falta de stock, no queda ningún pedido creado.
       await this.reportarPagoSinPedido(
         orderNumber,
+        mpPaymentId,
         `Pago aprobado pero no se pudo crear el pedido ${orderNumber}`,
         err,
       );
@@ -213,6 +226,7 @@ export class HandleWebhookUseCase {
 
   private async reportarPagoSinPedido(
     orderNumber: string,
+    mpPaymentId: string,
     mensaje: string,
     err: unknown,
   ): Promise<void> {
@@ -220,6 +234,7 @@ export class HandleWebhookUseCase {
     await this.events.publish(
       new PagoSinPedido({
         orderNumber,
+        mpPaymentId,
         detalle: err instanceof Error ? err.message : String(err),
       }),
     );

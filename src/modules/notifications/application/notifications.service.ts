@@ -112,11 +112,50 @@ export class NotificationsService {
     }
   }
 
-  async pagoSinPedido(i: { orderNumber: string; detalle: string }) {
+  async pagoSinPedido(i: {
+    orderNumber: string;
+    mpPaymentId: string;
+    detalle: string;
+  }): Promise<void> {
     const adminEmail = this.admin.adminEmail();
-    if (adminEmail) {
-      await this.mail.sendStockAlert(adminEmail, i.orderNumber, i.detalle);
-    }
+    if (!adminEmail) return;
+    await this.mail.sendPaymentAlert(adminEmail, {
+      asunto: `⚠️ Atención requerida — pago #${i.orderNumber} sin pedido`,
+      titulo: 'Pago aprobado sin pedido',
+      orderNumber: i.orderNumber,
+      detalle: `${i.detalle}\nPago de MercadoPago: ${i.mpPaymentId}`,
+    });
+  }
+
+  async pagoDuplicado(c: {
+    orderNumber: string;
+    mpPaymentId: string;
+    mpPaymentIdAnterior: string | null;
+  }): Promise<void> {
+    const adminEmail = this.admin.adminEmail();
+    if (!adminEmail) return;
+    const anterior = c.mpPaymentIdAnterior ?? 'otro pago';
+    await this.mail.sendPaymentAlert(adminEmail, {
+      asunto: `⚠️ Doble cobro — pedido #${c.orderNumber}`,
+      titulo: 'Pago duplicado: hay que reembolsar',
+      orderNumber: c.orderNumber,
+      detalle: `MercadoPago aprobó el pago ${c.mpPaymentId}, pero el pedido ya estaba pagado con ${anterior}. Reembolsa ${c.mpPaymentId} desde el panel de MercadoPago.`,
+    });
+  }
+
+  async pagoReembolsado(r: {
+    orderNumber: string;
+    mpPaymentId: string;
+    estadoMp: string;
+  }): Promise<void> {
+    const adminEmail = this.admin.adminEmail();
+    if (!adminEmail) return;
+    await this.mail.sendPaymentAlert(adminEmail, {
+      asunto: `⚠️ Pago reembolsado — pedido #${r.orderNumber}`,
+      titulo: 'Pago reembolsado o contracargo',
+      orderNumber: r.orderNumber,
+      detalle: `MercadoPago marcó el pago ${r.mpPaymentId} como ${r.estadoMp}. El pedido no se canceló automáticamente: revisa si ya se envió y decide.`,
+    });
   }
 
   bienvenida(u: { email: string; nombre: string }) {
