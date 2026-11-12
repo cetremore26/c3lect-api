@@ -22,7 +22,7 @@ export interface PedidoParaPago {
   id: string;
   orderNumber: string;
   userId: string | null;
-  /** Solo un pedido PENDIENTE puede pagarse, confirmarse o cancelarse por pago. */
+  /** Solo un pedido PENDIENTE puede pagarse o confirmarse por pago. */
   pendiente: boolean;
   total: number;
   fbp: string | null;
@@ -44,8 +44,6 @@ export interface OrdersPort {
   findForPayment(orderId: string): Promise<PedidoParaPago | null>;
 
   confirmarPorPago(orderId: string): Promise<void>;
-
-  cancelarPorPago(orderId: string): Promise<void>;
 
   crearConfirmadoPorPago(params: {
     orderNumber: string;
