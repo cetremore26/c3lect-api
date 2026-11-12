@@ -13,6 +13,7 @@ import {
   PagoSinPedido,
 } from '../../domain/payment-events';
 import { EstadoPago, reglaDeTransicion } from '../../domain/payment-status';
+import { VENTANA_FIRMA_MS } from '../../domain/verify-mp-webhook-signature';
 import { HandleWebhookUseCase } from './handle-webhook.use-case';
 
 const WEBHOOK_SECRET = 'test-secret';
@@ -282,13 +283,17 @@ describe('HandleWebhookUseCase', () => {
       expect(gateway.getPayment).not.toHaveBeenCalled();
     });
 
-    it('rechaza con UnauthorizedError si la firma es de hace mas de 5 minutos', async () => {
+    it('rechaza con UnauthorizedError si la firma es fuera de la ventana de firma', async () => {
       const { useCase, gateway } = makeUseCase();
 
       await expect(
         useCase.execute(
           webhookDto('mp-1'),
-          firmarWebhook('mp-1', 'req-1', String(Date.now() - 6 * 60_000)),
+          firmarWebhook(
+            'mp-1',
+            'req-1',
+            String(Date.now() - VENTANA_FIRMA_MS - 60_000),
+          ),
           'req-1',
         ),
       ).rejects.toBeInstanceOf(UnauthorizedError);

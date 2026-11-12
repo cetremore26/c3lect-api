@@ -1,5 +1,8 @@
 import { createHmac } from 'crypto';
-import { verifyMpWebhookSignature } from './verify-mp-webhook-signature';
+import {
+  VENTANA_FIRMA_MS,
+  verifyMpWebhookSignature,
+} from './verify-mp-webhook-signature';
 
 const SECRET = 'test-secret';
 const AHORA = 1_762_800_000_000;
@@ -78,15 +81,23 @@ describe('verifyMpWebhookSignature', () => {
     ).toBe(true);
   });
 
-  it('rechaza una firma valida con ts de hace mas de 5 minutos', () => {
-    const signature = firmar('mp-1', 'req-1', String(AHORA - 5 * 60_000 - 1));
+  it('rechaza una firma valida con ts de hace mas de la ventana', () => {
+    const signature = firmar(
+      'mp-1',
+      'req-1',
+      String(AHORA - VENTANA_FIRMA_MS - 1),
+    );
     expect(
       verifyMpWebhookSignature(SECRET, 'mp-1', signature, 'req-1', AHORA),
     ).toBe(false);
   });
 
-  it('rechaza una firma valida con ts mas de 5 minutos en el futuro', () => {
-    const signature = firmar('mp-1', 'req-1', String(AHORA + 5 * 60_000 + 1));
+  it('rechaza una firma valida con ts mas de la ventana en el futuro', () => {
+    const signature = firmar(
+      'mp-1',
+      'req-1',
+      String(AHORA + VENTANA_FIRMA_MS + 1),
+    );
     expect(
       verifyMpWebhookSignature(SECRET, 'mp-1', signature, 'req-1', AHORA),
     ).toBe(false);

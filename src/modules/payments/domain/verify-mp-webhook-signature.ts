@@ -1,7 +1,11 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 
-// Tolerancia máxima entre el ts firmado y el reloj del servidor (antirreplay).
-export const VENTANA_FIRMA_MS = 5 * 60 * 1000;
+// Tolerancia máxima entre el ts firmado y el reloj del servidor. MercadoPago
+// puede reutilizar la firma original en los reintentos (que se extienden por
+// horas), así que la ventana es amplia. Repetir una notificación es inocuo: el
+// handler solo usa data.id, vuelve a consultar el pago a MercadoPago y es
+// idempotente.
+export const VENTANA_FIRMA_MS = 72 * 60 * 60 * 1000;
 
 // Verifica la firma HMAC que manda MercadoPago en el header x-signature.
 // Pura: recibe el secreto y el reloj (`ahoraMs`) ya resueltos (buscarlos es

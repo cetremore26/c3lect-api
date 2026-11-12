@@ -231,7 +231,7 @@ Reglas del procesamiento:
   `RECHAZADO` y `CANCELADO` no lo son porque el cliente puede reintentar y
   pagar el mismo pedido. Un rechazo nunca cancela pedidos.
 - Respuesta HTTP: 200 si se procesó o la notificación no aplica, 401 si la
-  firma es inválida o su `ts` difiere más de 5 minutos del reloj del servidor,
+  firma es inválida o su `ts` difiere más de 72 horas del reloj del servidor,
   y 500 ante cualquier fallo inesperado, para que MercadoPago reintente. Solo
   los `DomainError` se convierten en alerta; el resto se propaga.
 - La transición a `APROBADO`, la creación del pedido y `linkToOrder` ocurren
