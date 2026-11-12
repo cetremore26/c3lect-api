@@ -22,3 +22,4 @@ export type {
 // datos de envío que orders, con la misma validación.
 export { OrderItemDto } from './infrastructure/http/dto/order-item.dto';
 export { ShippingInfoDto } from './infrastructure/http/dto/shipping-info.dto';
+export { MAX_ITEMS_POR_PEDIDO } from './domain/order-limits';
