@@ -45,7 +45,7 @@ export class PaymentsController {
   @ApiOperation({
     summary: 'Crear preferencia de pago',
     description:
-      'Genera una preferencia en MercadoPago y retorna la URL de checkout. Funciona para usuarios autenticados e invitados.',
+      'Genera una preferencia en MercadoPago y retorna la URL de checkout. Solo para el dueño del pedido o un ADMIN (los pedidos de invitado solo los paga un ADMIN).',
   })
   @ApiCreatedResponse({
     description: 'Retorna checkoutUrl, preferenceId y paymentId',
