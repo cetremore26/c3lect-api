@@ -1,4 +1,4 @@
-import type { VentaUpdateDto } from '../../../domain/ventas.util';
+import type { VentaCambios } from '../../../domain/ventas.util';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
@@ -9,7 +9,7 @@ import {
   Min,
 } from 'class-validator';
 
-export class UpdateVentaDto implements VentaUpdateDto {
+export class UpdateVentaDto implements VentaCambios {
   @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()

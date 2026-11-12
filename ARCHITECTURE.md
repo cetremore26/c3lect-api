@@ -31,6 +31,27 @@ modules/<contexto>/
 | `application` | su dominio, sus puertos, `shared/domain`, `shared/application`; de `@nestjs/common` solo `Injectable`, `Inject`, `Logger` | `@prisma/*`, `@nestjs/config`, infrastructure, **cualquier otro módulo** |
 | `infrastructure` | todo lo anterior, frameworks, la `public-api` de otros módulos | internals de otros módulos |
 
+### Casos de uso y servicios de aplicación
+
+`application/` admite **dos formas**, con las mismas reglas de dependencia
+(solo puertos, sin Prisma):
+
+- **Servicio de aplicación** (`application/<nombre>.service.ts`): una clase
+  `@Injectable` con varios métodos. Es la forma válida para CRUD simple y
+  consultas sin coordinación entre contextos. Ejemplos reales:
+  `compras.service.ts`, `gastos.service.ts`, `marcas.service.ts`.
+- **Caso de uso** (`application/use-cases/<verbo>-<sustantivo>.use-case.ts`):
+  una clase con un método. Se reserva para flujos con **transacción y
+  eventos**. Ejemplos: `UpdateOrderStatusUseCase`, `HandleWebhookUseCase`.
+
+Criterio de elección: si el flujo abre `uow.run` o publica eventos de dominio,
+es un caso de uso; si solo lee y escribe tablas propias, es un servicio.
+
+Los tipos de entrada que define el dominio se llaman `…Cambios` o `…Comando`,
+nunca `…Dto`: el sufijo Dto queda para `infrastructure/http/dto`
+(por ejemplo `CompraCambios` y `VentaCambios`, que implementan los DTOs de
+actualización).
+
 Los errores de negocio se lanzan como `DomainError` (`shared/domain/domain-error.ts`):
 `BusinessRuleViolation` (400), `UnauthorizedError` (401), `ForbiddenError` (403),
 `NotFoundError` (404), `ConflictError` (409). `GlobalExceptionFilter` los
@@ -59,9 +80,9 @@ adaptador, y TypeScript avisa si DTO y comando se desincronizan.
 | Marcas | `marcas` | — (lee catálogo y compras) | — | — |
 | Promociones | `promotions` | `promotions` | — | — |
 | Pedidos | `orders` | `orders`, `order_items`, `shipping_info`, `order_status_history` | `PedidoCreado`, `PedidoConfirmado`, `ConfirmacionDePedidoRevertida`, `EstadoDePedidoCambiado` | `UsuarioRegistrado` |
-| Pagos | `payments` | `payments` | `PagoAprobado`, `PagoSinPedido` | — |
-| Inventario | `inventario` | `inventario_maestro` | `StockAgotado`, `StockRepuesto`, `MercanciaIngresada`, `SalidaPorPedidoRegistrada`, `InventarioRecalculado` | `PedidoConfirmado`, `ConfirmacionDePedidoRevertida`, `VentaManualRegistrada`, `VentaEliminada`, `CompraRegistrada`, `CompraCorregida` |
-| Ventas | `ventas` | `historical_sales` | `VentaManualRegistrada`, `VentaEliminada` | `SalidaPorPedidoRegistrada`, `ConfirmacionDePedidoRevertida` |
+| Pagos | `payments` | `payments` | `PagoAprobado`, `PagoSinPedido`, `PagoDuplicado`, `PagoReembolsado` | — |
+| Inventario | `inventario` | `inventario_maestro` | `StockAgotado`, `StockRepuesto`, `MercanciaIngresada`, `SalidaPorPedidoRegistrada`, `InventarioRecalculado` | `PedidoConfirmado`, `VentasDePedidoAnuladas`, `VentaManualRegistrada`, `VentaEliminada`, `CompraRegistrada`, `CompraCorregida` |
+| Ventas | `ventas` | `historical_sales` | `VentaManualRegistrada`, `VentaEliminada`, `VentasDePedidoAnuladas` | `SalidaPorPedidoRegistrada`, `ConfirmacionDePedidoRevertida` |
 | Compras | `compras` | `purchases` | `CompraRegistrada`, `CompraCorregida` | — |
 | Gastos | `gastos` | `expenses` | — | — |
 | Reseñas | `resenas` | `resenas` | — | — (consulta pedidos e identidad por sus fachadas) |
@@ -111,6 +132,34 @@ necesite acceso a ellas. Cambiarla a `security_invoker` rompe la tienda.
 Un cambio futuro al contrato sigue el mismo orden: primero lo que agrega
 (columna nueva en la vista), luego el frontend, y al final lo que quita.
 
+### Seguridad de la base de datos
+
+La migración `20261110000200_rls_versionado` deja versionado lo que antes se
+hacía a mano en Supabase. La API se conecta como dueño de las tablas, así que
+RLS no le aplica; `anon` y `authenticated` (los roles de la API REST de
+Supabase) no deben tocar nada interno:
+
+- **RLS habilitado en todas las tablas de `public`**, sin políticas. Las
+  políticas antiguas de lectura pública de `productos` y `promociones` se
+  eliminan: la lectura pública pasa por las vistas.
+- `anon` y `authenticated` solo tienen `GRANT SELECT` sobre `catalogo_publico`
+  y `resenas_publicas`; sobre las tablas no tienen nada.
+- La migración es idempotente y protege lo que depende de los roles de
+  Supabase con `IF EXISTS (SELECT 1 FROM pg_roles …)`: en una base local sin
+  esos roles aplica igual.
+- Las tablas futuras nacen cerradas: `ALTER DEFAULT PRIVILEGES … REVOKE ALL`
+  quita los privilegios por defecto de esos roles.
+- `src/shared/infrastructure/prisma/rls.int-spec.ts` (`pnpm test:int`) falla
+  si una tabla de `public` queda sin RLS o si `anon`/`authenticated` tienen
+  privilegios fuera de las dos vistas (la parte de privilegios solo corre si
+  la base tiene esos roles).
+
+**Regla para quien añada una vista pública:** `REVOKE ALL` sobre la vista para
+`anon` y `authenticated` y luego `GRANT SELECT` explícito (como hace la
+migración con las dos existentes), y agrégala a la lista de vistas permitidas
+del int-spec (si no, el test falla). Una vista simple es actualizable, así que sin el `REVOKE`
+quedaría abierta a escrituras.
+
 ## Consultas vs. efectos entre contextos
 
 - **Consulta síncrona** ("¿cuánto stock hay?", "¿cuál es el precio con
@@ -152,6 +201,8 @@ UpdateOrderStatusUseCase (uow.run)
 └─ publish EstadoDePedidoCambiado    [after-commit] → notificaciones manda correos
 ```
 
+El inverso: `cancelar CONFIRMADO → ConfirmacionDePedidoRevertida [in-tx] → ventas borra sus filas → VentasDePedidoAnuladas [in-tx] → inventario repone`.
+
 Si inventario lanza "stock insuficiente", no queda ni el cambio de estado, ni
 ventas, ni correo.
 
@@ -160,11 +211,116 @@ listeners en paralelo y por defecto se traga sus errores. Aquí un handler
 `in-transaction` que falla debe abortar la transacción, y los handlers deben
 correr en orden sobre el mismo cliente transaccional.
 
+### Pagos: eventos y webhook
+
+`HandleWebhookUseCase` procesa la notificación de MercadoPago de forma
+**síncrona**, antes de responder. Todo pago `approved` termina en un pedido o
+en una alerta al admin; nunca se descarta en silencio. Los eventos viven en
+`payments/domain/payment-events.ts` y se exportan en `payments/public-api.ts`:
+
+| Evento | Cuándo se publica | Qué hace el suscriptor (todos `after-commit`) |
+|---|---|---|
+| `PagoAprobado` | El pago quedó `APROBADO` y el pedido se materializó (creado ya CONFIRMADO desde el `draftPayload`, o el pedido PENDIENTE existente confirmado) | `notifications`: correo con comprobante PDF al cliente y al admin; `meta-conversions`: reporta el Purchase. El PDF se genera en el handler, ya fuera de la transacción: un fallo del PDF solo evita los correos de ese evento, no revierte el pago ni el pedido |
+| `PagoSinPedido` | Llega un `approved` que no puede materializar pedido: sin `external_reference` o sin registro de pago, monto o moneda distintos de `payment.total` y `COP`, flujo viejo con el pedido ya no `PENDIENTE`, o fallo de negocio al crearlo (p. ej. sin stock) | `notifications`: alerta al admin con el motivo (`detalle`) |
+| `PagoDuplicado` | Llega un `approved` con `mpPaymentId` distinto sobre una fila ya `APROBADO` o `REEMBOLSADO` (el cliente pagó dos veces) | `notifications`: alerta al admin para reembolsar el segundo cobro |
+| `PagoReembolsado` | Transición `APROBADO → REEMBOLSADO` (MercadoPago reporta `refunded` o `charged_back`) | `notifications`: alerta al admin. No cancela el pedido: el admin decide |
+
+Reglas del procesamiento:
+
+- Los estados terminales de un pago son solo `APROBADO` y `REEMBOLSADO`;
+  `RECHAZADO` y `CANCELADO` no lo son porque el cliente puede reintentar y
+  pagar el mismo pedido. Un rechazo nunca cancela pedidos.
+- Respuesta HTTP: 200 si se procesó o la notificación no aplica, 401 si la
+  firma es inválida o su `ts` difiere más de 72 horas del reloj del servidor,
+  y 500 ante cualquier fallo inesperado, para que MercadoPago reintente. Solo
+  los `DomainError` se convierten en alerta; el resto se propaga.
+- La transición a `APROBADO`, la creación del pedido y `linkToOrder` ocurren
+  dentro de **una** `uow.run`: si algo de negocio falla, esa transacción se
+  revierte y una segunda deja el pago `APROBADO` junto con el evento
+  `PagoSinPedido`. Es idempotente: una entrega repetida del mismo cobro no
+  produce nada nuevo.
+
+## Autenticación y sesión
+
+Todo vive en el módulo `auth` (`AuthService` y su controller). Los tokens
+firmados de un solo propósito (`registro`, `admin-2fa`) son JWT con un campo
+`purpose`; un token con otro propósito no sirve para otro flujo. Los emails
+se normalizan a `trim` + minúsculas en los DTOs de entrada (decorador
+`NormalizeEmail`) y la migración `20261110000100_emails_minusculas` lo aplicó
+a los datos existentes; por eso `linkGuestOrders` compara emails sin
+distinguir mayúsculas.
+
+### Registro con email verificado
+
+```
+POST /auth/request-otp  { email }        → siempre el mismo mensaje (no revela si existe)
+POST /auth/verify-otp   { email, code }
+  ├─ el email tiene cuenta (no ADMIN)    → { accessToken, refreshToken, user }
+  └─ no tiene cuenta                     → { requiresRegistration: true, registrationToken }
+                                            (JWT purpose 'registro', con el email, 15 min)
+POST /auth/register     { registrationToken, password, nombre, … }
+  ├─ sin token válido                    → 401
+  ├─ email del body distinto al del token → 400
+  └─ ok                                  → crea la cuenta (verificada) y emite tokens
+```
+
+El email de la cuenta sale del token, nunca del body. Todas las cuentas nacen
+verificadas. `UsuarioRegistrado` dispara la bienvenida y la vinculación de
+pedidos hechos como invitado, en la misma transacción.
+
+### OTP
+
+- El código sale de `crypto.randomInt` (6 dígitos) y se guarda hasheado.
+- Hay un solo código vivo por (email, propósito `LOGIN | ADMIN_2FA`): emitir
+  uno invalida el anterior. Se emiten como máximo 3 por email y propósito en
+  15 minutos; pasado el límite no se emite nada y la respuesta es idéntica.
+- Cada código admite 5 intentos antes de quemarse. El intento se reserva
+  antes de comparar, para que adivinanzas en paralelo no superen el límite.
+- El consumo es atómico (`updateMany where used = false`, éxito solo si
+  `count === 1`): dos peticiones con el mismo código no pueden usarlo ambas.
+
+### Admin con segundo factor
+
+```
+POST /auth/login      { email, password }
+  ├─ credenciales malas                  → 401 genérico (con argon2 ficticio para igualar tiempos)
+  ├─ rol ≠ ADMIN                         → tokens
+  └─ rol = ADMIN                         → envía OTP ADMIN_2FA y responde
+                                            { requiresSecondFactor: true, challengeToken }
+                                            (JWT purpose 'admin-2fa', 10 min)
+POST /auth/login/2fa  { challengeToken, code } → tokens
+```
+
+`verify-otp` de un ADMIN responde el mismo 401 genérico: un admin nunca entra
+solo con un código, siempre contraseña más segundo factor.
+
+### Restablecimiento de contraseña
+
+El token tiene la forma `<id>.<secreto>`; en base solo se guarda
+`sha256(secreto)` y se compara con `timingSafeEqual`. Pedir un restablecimiento
+invalida los anteriores y el consumo es de un solo uso. El enlace del correo
+lleva el token en el fragmento (`/reset-password#token=…`), que el navegador
+no envía a servidores ni a terceros.
+
+### Sesión
+
+- `OptionalJwtAuthGuard`: sin cabecera `Authorization` la petición es de
+  invitado; con cabecera, el token debe ser válido o responde 401.
+- El refresh token se guarda hasheado y se consume de forma atómica: rotar
+  dos veces el mismo token falla la segunda.
+- `RolesGuard` ignora el rol que trae el JWT y relee el rol actual del
+  usuario en base en cada petición: degradar a un admin surte efecto de
+  inmediato.
+
 ## Cómo agregar algo
 
 **Un caso de uso nuevo en un módulo existente:** la regla va en `domain/` (y
 su spec), la orquestación en `application/use-cases/` con sus dependencias
 como puertos, y el controller en `infrastructure/http/` llama al caso de uso.
+Antes de crear el archivo aplica el criterio de
+[Casos de uso y servicios de aplicación](#casos-de-uso-y-servicios-de-aplicación):
+un CRUD simple es un método más del servicio del módulo; solo un flujo
+transaccional o que publica eventos va en `use-cases/`.
 
 **Necesito datos de otro módulo:** no importes su repositorio. Define un
 puerto en tu `application/ports/`, agrega el método a la fachada del otro

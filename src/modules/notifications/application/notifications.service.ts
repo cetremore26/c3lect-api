@@ -1,5 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ADMIN_CONTACT, MAILER } from './ports/mailer.port';
+import { VOUCHER_GENERATOR } from './ports/voucher-generator.port';
+import type { VoucherGeneratorPort } from './ports/voucher-generator.port';
 import type {
   AdminContactPort,
   EmailItem,
@@ -19,6 +21,7 @@ export class NotificationsService {
   constructor(
     @Inject(MAILER) private readonly mail: MailerPort,
     @Inject(ADMIN_CONTACT) private readonly admin: AdminContactPort,
+    @Inject(VOUCHER_GENERATOR) private readonly voucher: VoucherGeneratorPort,
   ) {}
 
   async pedidoCreado(p: {
@@ -78,16 +81,23 @@ export class NotificationsService {
   async pagoAprobado(p: {
     orderNumber: string;
     total: number;
+    lineas: EmailItem[];
     cliente: Cliente | null;
-    comprobantePdf: Buffer;
   }): Promise<void> {
+    // Se genera una sola vez por evento, antes de los envíos: si falla, el
+    // error sube al bus (que lo registra) y no sale ningún correo a medias.
+    const comprobantePdf = await this.voucher.generate({
+      orderNumber: p.orderNumber,
+      total: p.total,
+      items: p.lineas,
+    });
     if (p.cliente) {
       await this.mail.sendPaymentConfirmation(
         p.cliente.email,
         p.cliente.nombreCompleto,
         p.orderNumber,
         p.total,
-        p.comprobantePdf,
+        comprobantePdf,
       );
     }
     const adminEmail = this.admin.adminEmail();
@@ -97,16 +107,55 @@ export class NotificationsService {
         'Admin',
         p.orderNumber,
         p.total,
-        p.comprobantePdf,
+        comprobantePdf,
       );
     }
   }
 
-  async pagoSinPedido(i: { orderNumber: string; detalle: string }) {
+  async pagoSinPedido(i: {
+    orderNumber: string;
+    mpPaymentId: string;
+    detalle: string;
+  }): Promise<void> {
     const adminEmail = this.admin.adminEmail();
-    if (adminEmail) {
-      await this.mail.sendStockAlert(adminEmail, i.orderNumber, i.detalle);
-    }
+    if (!adminEmail) return;
+    await this.mail.sendPaymentAlert(adminEmail, {
+      asunto: `⚠️ Atención requerida — pago #${i.orderNumber} sin pedido`,
+      titulo: 'Pago aprobado sin pedido',
+      orderNumber: i.orderNumber,
+      detalle: `${i.detalle}\nPago de MercadoPago: ${i.mpPaymentId}`,
+    });
+  }
+
+  async pagoDuplicado(c: {
+    orderNumber: string;
+    mpPaymentId: string;
+    mpPaymentIdAnterior: string | null;
+  }): Promise<void> {
+    const adminEmail = this.admin.adminEmail();
+    if (!adminEmail) return;
+    const anterior = c.mpPaymentIdAnterior ?? 'otro pago';
+    await this.mail.sendPaymentAlert(adminEmail, {
+      asunto: `⚠️ Doble cobro — pedido #${c.orderNumber}`,
+      titulo: 'Pago duplicado: hay que reembolsar',
+      orderNumber: c.orderNumber,
+      detalle: `MercadoPago aprobó el pago ${c.mpPaymentId}, pero el pedido ya estaba pagado con ${anterior}. Reembolsa ${c.mpPaymentId} desde el panel de MercadoPago.`,
+    });
+  }
+
+  async pagoReembolsado(r: {
+    orderNumber: string;
+    mpPaymentId: string;
+    estadoMp: string;
+  }): Promise<void> {
+    const adminEmail = this.admin.adminEmail();
+    if (!adminEmail) return;
+    await this.mail.sendPaymentAlert(adminEmail, {
+      asunto: `⚠️ Pago reembolsado — pedido #${r.orderNumber}`,
+      titulo: 'Pago reembolsado o contracargo',
+      orderNumber: r.orderNumber,
+      detalle: `MercadoPago marcó el pago ${r.mpPaymentId} como ${r.estadoMp}. El pedido no se canceló automáticamente: revisa si ya se envió y decide.`,
+    });
   }
 
   bienvenida(u: { email: string; nombre: string }) {

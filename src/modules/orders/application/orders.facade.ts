@@ -49,15 +49,6 @@ export class OrdersFacade {
     );
   }
 
-  /** Pedido PENDIENTE cuyo pago rechazó o canceló MercadoPago. */
-  cancelarPorPago(orderId: string) {
-    return this.updateOrderStatus.execute(
-      orderId,
-      EstadoPedido.CANCELADO,
-      MERCADOPAGO,
-    );
-  }
-
   /** Materializa ya CONFIRMADO un pedido que solo existía como borrador del pago. */
   crearConfirmadoPorPago(params: CreateConfirmedOrderParams) {
     return this.createConfirmedOrder.execute(params);

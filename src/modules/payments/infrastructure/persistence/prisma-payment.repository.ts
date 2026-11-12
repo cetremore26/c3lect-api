@@ -1,7 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { EstadoPago, Payment as PaymentRow, Prisma } from '@prisma/client';
+import { Payment as PaymentRow, Prisma } from '@prisma/client';
 import { PrismaTransactionHost } from '../../../../shared/infrastructure/prisma/prisma-transaction.host';
 import type { DraftPayload } from '../../application/draft-payload';
+import type {
+  EstadoPago,
+  ReglaDeTransicion,
+} from '../../domain/payment-status';
 import {
   NewPaymentData,
   Payment,
@@ -59,31 +63,34 @@ export class PrismaPaymentRepository implements PaymentRepositoryPort {
     return row && toPayment(row);
   }
 
-  async markProcessedIfNotTerminal(params: {
+  async findById(id: string): Promise<Payment | null> {
+    const row = await this.db.client.payment.findUnique({ where: { id } });
+    return row && toPayment(row);
+  }
+
+  async transicionar(params: {
     paymentId: string;
     nuevoEstado: EstadoPago;
     mpPaymentId: string;
+    regla: ReglaDeTransicion;
   }): Promise<boolean> {
-    // Actualización condicional atómica: MercadoPago reintenta la entrega
-    // del webhook, así que dos entregas casi simultáneas podrían leer el
-    // mismo estado "no terminal" y ambas intentar procesar el pago. Solo
-    // la entrega que efectivamente cambia el estado (count===1) continúa;
-    // si otra ya lo dejó en estado terminal, count=0 y no hacemos nada más
-    // — evita crear dos pedidos para un solo pago.
+    // Actualizacion condicional atomica: MercadoPago reintenta la entrega
+    // del webhook, asi que dos entregas casi simultaneas podrian leer el
+    // mismo estado de origen y ambas intentar procesar el pago. Solo la
+    // entrega que efectivamente cambia el estado (count===1) continua; si
+    // otra ya lo movio, count=0 y no hacemos nada mas: evita crear dos
+    // pedidos para un solo pago.
     const { count } = await this.db.client.payment.updateMany({
       where: {
         id: params.paymentId,
-        estado: {
-          notIn: [
-            EstadoPago.APROBADO,
-            EstadoPago.RECHAZADO,
-            EstadoPago.CANCELADO,
-          ],
-        },
+        estado: { in: [...params.regla.desde] },
+        ...(params.regla.exigeMismoMpPaymentId
+          ? { mpPaymentId: params.mpPaymentId }
+          : {}),
       },
       data: { estado: params.nuevoEstado, mpPaymentId: params.mpPaymentId },
     });
-    return count > 0;
+    return count === 1;
   }
 
   async linkToOrder(paymentId: string, orderId: string): Promise<void> {

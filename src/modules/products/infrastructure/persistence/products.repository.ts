@@ -7,6 +7,7 @@ import {
 } from '../../application/ports/products-repository.port';
 import type {
   Product,
+  ProductChanges,
   ProductData,
   ProductFilter,
   ProductSort,
@@ -60,7 +61,7 @@ export class ProductsRepository implements ProductsRepositoryPort {
     });
   }
 
-  create(data: ProductData): Promise<Product> {
+  create(data: ProductData & { ocultoPorAdmin: boolean }): Promise<Product> {
     return this.db.client.product.create({
       data: {
         id: data.id,
@@ -69,6 +70,7 @@ export class ProductsRepository implements ProductsRepositoryPort {
         display: data.display,
         precio: data.precio,
         disponible: data.disponible ?? true,
+        ocultoPorAdmin: data.ocultoPorAdmin,
         destacado: data.destacado ?? false,
         destacadoOrden: data.destacadoOrden ?? null,
         cat: data.cat,
@@ -94,7 +96,7 @@ export class ProductsRepository implements ProductsRepositoryPort {
     });
   }
 
-  update(id: string, data: Partial<Omit<ProductData, 'id'>>): Promise<Product> {
+  update(id: string, data: ProductChanges): Promise<Product> {
     return this.db.client.product.update({ where: { id }, data });
   }
 
@@ -118,6 +120,13 @@ export class ProductsRepository implements ProductsRepositoryPort {
     await this.db.client.product.updateMany({
       where: { ...porNombre(nombre), disponible: !disponible },
       data: { disponible },
+    });
+  }
+
+  async habilitarPorNombre(nombre: string): Promise<void> {
+    await this.db.client.product.updateMany({
+      where: { ...porNombre(nombre), disponible: false, ocultoPorAdmin: false },
+      data: { disponible: true },
     });
   }
 

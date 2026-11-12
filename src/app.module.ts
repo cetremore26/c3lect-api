@@ -23,6 +23,7 @@ import { MarcasModule } from './modules/marcas/marcas.module';
 import { PromotionsModule } from './modules/promotions/promotions.module';
 import { MetaConversionsModule } from './modules/meta-conversions/meta-conversions.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { throttlerOptions } from './config/throttler';
 import { ResenasModule } from './modules/resenas/resenas.module';
 
 @Module({
@@ -31,13 +32,9 @@ import { ResenasModule } from './modules/resenas/resenas.module';
     // 'default' se comparte entre todos los endpoints por IP, incluido el panel
     // admin (protegido aparte por JWT + rol ADMIN): navegar varias secciones del
     // panel en una sesión activa agotaba el cupo de 100/min y producía 429
-    // intermitentes. 'auth' (login) queda igual de estricto.
-    ThrottlerModule.forRoot({
-      throttlers: [
-        { name: 'default', ttl: 60000, limit: 300 },
-        { name: 'auth', ttl: 60000, limit: 8 },
-      ],
-    }),
+    // intermitentes. 'auth' (8/min) solo rige en las rutas que declaran
+    // @Throttle({ auth }) (ver config/throttler.ts).
+    ThrottlerModule.forRoot(throttlerOptions),
     SharedKernelModule,
     ProductsModule,
     AuthModule,

@@ -1,11 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
-  IsDateString,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -21,12 +21,12 @@ export class QueryOrdersDto implements ListOrdersQuery {
 
   @ApiPropertyOptional({ example: '2026-01-01' })
   @IsOptional()
-  @IsDateString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Usa el formato YYYY-MM-DD' })
   fechaDesde?: string;
 
   @ApiPropertyOptional({ example: '2026-12-31' })
   @IsOptional()
-  @IsDateString()
+  @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'Usa el formato YYYY-MM-DD' })
   fechaHasta?: string;
 
   @ApiPropertyOptional({

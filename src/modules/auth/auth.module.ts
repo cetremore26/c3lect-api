@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -7,17 +7,22 @@ import {
   ACCESS_TOKEN_ISSUER,
   AUTH_SETTINGS,
   PASSWORD_HASHER,
+  PURPOSE_TOKENS,
 } from './application/ports/auth-services.port';
 import { IDENTITY_REPOSITORY } from './application/ports/identity-repository.port';
 import {
   Argon2PasswordHasher,
   ConfigAuthSettings,
   JwtAccessTokenIssuer,
+  JwtPurposeTokens,
 } from './infrastructure/adapters/auth-services.adapters';
+import { ROLE_READER } from '../../shared/application/ports/role-reader.port';
+import { PrismaRoleReader } from './infrastructure/adapters/prisma-role-reader';
 import { AuthController } from './infrastructure/http/auth.controller';
 import { JwtStrategy } from './infrastructure/http/jwt.strategy';
 import { PrismaIdentityRepository } from './infrastructure/persistence/prisma-identity.repository';
 
+@Global()
 @Module({
   imports: [
     PassportModule,
@@ -43,6 +48,9 @@ import { PrismaIdentityRepository } from './infrastructure/persistence/prisma-id
     { provide: PASSWORD_HASHER, useClass: Argon2PasswordHasher },
     { provide: ACCESS_TOKEN_ISSUER, useClass: JwtAccessTokenIssuer },
     { provide: AUTH_SETTINGS, useClass: ConfigAuthSettings },
+    { provide: PURPOSE_TOKENS, useClass: JwtPurposeTokens },
+    { provide: ROLE_READER, useClass: PrismaRoleReader },
   ],
+  exports: [ROLE_READER],
 })
 export class AuthModule {}

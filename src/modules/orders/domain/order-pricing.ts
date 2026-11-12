@@ -31,6 +31,20 @@ export interface PricedOrder {
   total: number;
 }
 
+// Une las lineas repetidas del mismo producto sumando cantidades, en el orden
+// de primera aparicion.
+export function fusionarItemsRepetidos(
+  items: RequestedItem[],
+): RequestedItem[] {
+  const porId = new Map<string, RequestedItem>();
+  for (const item of items) {
+    const previo = porId.get(item.productId);
+    if (previo) previo.cantidad += item.cantidad;
+    else porId.set(item.productId, { ...item });
+  }
+  return [...porId.values()];
+}
+
 export function priceOrderItems(
   items: RequestedItem[],
   products: Map<string, PriceableProduct>,

@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { exponerSwagger } from './config/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
@@ -48,17 +49,19 @@ async function bootstrap() {
     }),
   );
 
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('C3LECT API')
-    .setDescription(
-      'Backend para la plataforma de comercio electrónico premium C3LECT — Relojería y Perfumería',
-    )
-    .setVersion('1.0')
-    .addBearerAuth()
-    .build();
+  if (exponerSwagger(config.get<string>('NODE_ENV'))) {
+    const swaggerConfig = new DocumentBuilder()
+      .setTitle('C3LECT API')
+      .setDescription(
+        'Backend para la plataforma de comercio electrónico premium C3LECT — Relojería y Perfumería',
+      )
+      .setVersion('1.0')
+      .addBearerAuth()
+      .build();
 
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('api/docs', app, document);
+    const document = SwaggerModule.createDocument(app, swaggerConfig);
+    SwaggerModule.setup('api/docs', app, document);
+  }
 
   // Deja que un SIGTERM/SIGINT (ej. redeploy de Render) cierre el servidor y
   // desconecte Prisma de forma ordenada en vez de cortar a mitad de una escritura.

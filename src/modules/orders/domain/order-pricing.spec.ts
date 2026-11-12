@@ -1,4 +1,8 @@
-import { PriceableProduct, priceOrderItems } from './order-pricing';
+import {
+  PriceableProduct,
+  fusionarItemsRepetidos,
+  priceOrderItems,
+} from './order-pricing';
 
 describe('priceOrderItems', () => {
   const producto: PriceableProduct = {
@@ -38,5 +42,20 @@ describe('priceOrderItems', () => {
       subtotal: 1600,
     });
     expect(result.total).toBe(1600);
+  });
+});
+
+describe('fusionarItemsRepetidos', () => {
+  it('suma cantidades por productId y conserva el orden de primera aparicion', () => {
+    expect(
+      fusionarItemsRepetidos([
+        { productId: 'p1', cantidad: 1 },
+        { productId: 'p2', cantidad: 1 },
+        { productId: 'p1', cantidad: 2 },
+      ]),
+    ).toEqual([
+      { productId: 'p1', cantidad: 3 },
+      { productId: 'p2', cantidad: 1 },
+    ]);
   });
 });

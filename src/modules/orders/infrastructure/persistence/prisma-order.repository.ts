@@ -120,19 +120,47 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
     });
   }
 
-  create(data: NewOrderData): Promise<CreatedOrder> {
-    return this.db.client.order.create({
-      data: {
-        ...this.orderData(data),
-        statusHistory: {
-          create: {
-            statusNuevo: EstadoPedido.PENDIENTE,
-            changedBy: data.userId,
-          },
-        },
-      },
+  findByIdempotencyKey(key: string): Promise<CreatedOrder | null> {
+    return this.db.client.order.findUnique({
+      where: { idempotencyKey: key },
       include: createInclude,
     });
+  }
+
+  // No debe correr dentro de una transacción: el P2002 de la carrera la
+  // abortaría y la lectura del pedido ganador fallaría.
+  async create(
+    data: NewOrderData,
+  ): Promise<{ order: CreatedOrder; nuevo: boolean }> {
+    try {
+      const order = await this.db.client.order.create({
+        data: {
+          ...this.orderData(data),
+          statusHistory: {
+            create: {
+              statusNuevo: EstadoPedido.PENDIENTE,
+              changedBy: data.userId,
+            },
+          },
+        },
+        include: createInclude,
+      });
+      return { order, nuevo: true };
+    } catch (e) {
+      // Dos peticiones con la misma clave a la vez: la unique de
+      // idempotency_key deja pasar una sola. No se mira meta.target (con el
+      // adaptador pg su forma varía): si hay un pedido con la clave, la
+      // colisión fue esa.
+      if (
+        data.idempotencyKey &&
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === 'P2002'
+      ) {
+        const existente = await this.findByIdempotencyKey(data.idempotencyKey);
+        if (existente) return { order: existente, nuevo: false };
+      }
+      throw e;
+    }
   }
 
   createConfirmed(
@@ -160,14 +188,16 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
     statusAnterior: EstadoPedido;
     statusNuevo: EstadoPedido;
     changedBy: string;
-  }): Promise<OrderForStatusTransition> {
+  }): Promise<OrderForStatusTransition | null> {
     const { orderId, statusAnterior, statusNuevo, changedBy } = params;
     const client = this.db.client;
 
-    await client.order.update({
-      where: { id: orderId },
+    // Update condicional: si otro proceso ya movió el pedido, no aplica.
+    const { count } = await client.order.updateMany({
+      where: { id: orderId, status: statusAnterior },
       data: { status: statusNuevo },
     });
+    if (count === 0) return null;
     await client.orderStatusHistory.create({
       data: { orderId, statusAnterior, statusNuevo, changedBy },
     });
@@ -178,9 +208,21 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
     });
   }
 
+  countByShippingEmailSince(email: string, desde: Date): Promise<number> {
+    return this.db.client.order.count({
+      where: {
+        createdAt: { gte: desde },
+        shippingInfo: { email: { equals: email, mode: 'insensitive' } },
+      },
+    });
+  }
+
   async linkGuestOrders(email: string, userId: string): Promise<void> {
     await this.db.client.order.updateMany({
-      where: { userId: null, shippingInfo: { email } },
+      where: {
+        userId: null,
+        shippingInfo: { email: { equals: email, mode: 'insensitive' } },
+      },
       data: { userId },
     });
   }
@@ -232,6 +274,7 @@ export class PrismaOrderRepository implements OrderRepositoryPort {
       paymentMethod: data.paymentMethod,
       fbp: data.fbp,
       fbc: data.fbc,
+      idempotencyKey: data.idempotencyKey ?? null,
       items: { create: data.items },
       shippingInfo: { create: data.shippingInfo },
     };

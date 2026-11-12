@@ -1,3 +1,5 @@
+import type { PropositoOtp } from '../../domain/otp-policy';
+
 export const IDENTITY_REPOSITORY = Symbol('IDENTITY_REPOSITORY');
 
 export interface Credenciales {
@@ -11,6 +13,12 @@ export interface Credenciales {
 export interface SecretoPendiente {
   id: string;
   hash: string;
+}
+
+export interface OtpVivo {
+  id: string;
+  hash: string;
+  intentos: number;
 }
 
 // Tablas del contexto de identidad: users (credenciales), refresh_tokens,
@@ -35,19 +43,43 @@ export interface IdentityRepositoryPort {
   findValidRefreshToken(
     tokenHash: string,
   ): Promise<{ id: string; user: Credenciales } | null>;
-  deleteRefreshToken(id: string): Promise<void>;
+  consumeRefreshToken(id: string): Promise<boolean>;
   deleteRefreshTokensOf(userId: string): Promise<void>;
 
-  saveOtp(email: string, codeHash: string, expiresAt: Date): Promise<void>;
-  /** OTPs vigentes y sin usar del email, del más reciente al más antiguo. */
-  findValidOtps(email: string): Promise<SecretoPendiente[]>;
-  markOtpUsed(id: string): Promise<void>;
+  countOtpsSince(
+    email: string,
+    proposito: PropositoOtp,
+    desde: Date,
+  ): Promise<number>;
+  /** Marca como usados todos los OTP no usados del email y propósito. */
+  invalidateOtps(email: string, proposito: PropositoOtp): Promise<void>;
+  saveOtp(data: {
+    email: string;
+    proposito: PropositoOtp;
+    codeHash: string;
+    expiresAt: Date;
+  }): Promise<void>;
+  /** OTP sin usar, vigente y el más reciente del email y propósito. */
+  findLiveOtp(email: string, proposito: PropositoOtp): Promise<OtpVivo | null>;
+  /**
+   * Reserva atómica de un intento: true solo si el código seguía sin usar y
+   * con menos de maxIntentos. Nunca lo quema: la reserva número maxIntentos
+   * aún puede acertar y consumirlo; la siguiente devuelve false.
+   */
+  reserveOtpAttempt(id: string, maxIntentos: number): Promise<boolean>;
+  /** Consumo atómico: true solo para la llamada que lo marca como usado. */
+  consumeOtp(id: string): Promise<boolean>;
 
   savePasswordReset(
     userId: string,
     tokenHash: string,
     expiresAt: Date,
-  ): Promise<void>;
-  findValidPasswordResets(): Promise<(SecretoPendiente & { userId: string })[]>;
-  markPasswordResetUsed(id: string): Promise<void>;
+  ): Promise<{ id: string }>;
+  /** Marca como usados los resets vivos del usuario (solo vale el último). */
+  invalidatePasswordResetsOf(userId: string): Promise<void>;
+  findValidPasswordReset(
+    id: string,
+  ): Promise<(SecretoPendiente & { userId: string }) | null>;
+  /** Consumo atómico: true solo para la llamada que lo marca como usado. */
+  consumePasswordReset(id: string): Promise<boolean>;
 }

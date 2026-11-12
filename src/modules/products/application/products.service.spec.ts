@@ -20,11 +20,14 @@ describe('ProductsService.findAll', () => {
   it('separa filtro y orden antes de consultar al repositorio', async () => {
     const { service, repo } = makeService();
 
-    await service.findAll({
-      marca: 'Fossil',
-      sortBy: ProductSortBy.PRECIO,
-      sortOrder: SortOrder.DESC,
-    });
+    await service.findAll(
+      {
+        marca: 'Fossil',
+        sortBy: ProductSortBy.PRECIO,
+        sortOrder: SortOrder.DESC,
+      },
+      { esAdmin: true },
+    );
 
     expect(repo.findAll).toHaveBeenCalledWith(
       { marca: 'Fossil' },
@@ -32,17 +35,35 @@ describe('ProductsService.findAll', () => {
     );
   });
 
+  it('sin rol ADMIN fuerza soloPublicados', async () => {
+    const { service, repo } = makeService();
+    await service.findAll({ marca: 'Fossil' }, { esAdmin: false });
+    expect(repo.findAll).toHaveBeenCalledWith(
+      { marca: 'Fossil', soloPublicados: true },
+      expect.anything(),
+    );
+  });
+
+  it('con rol ADMIN no filtra publicados', async () => {
+    const { service, repo } = makeService();
+    await service.findAll({ marca: 'Fossil' }, { esAdmin: true });
+    expect(repo.findAll).toHaveBeenCalledWith(
+      { marca: 'Fossil' },
+      expect.anything(),
+    );
+  });
+
   describe('paginacion', () => {
     it('devuelve la lista plana cuando no se pide paginacion', async () => {
       const { service, repo } = makeService();
-      await service.findAll({});
+      await service.findAll({}, { esAdmin: true });
       expect(repo.findAll).toHaveBeenCalled();
       expect(repo.findAllPaginated).not.toHaveBeenCalled();
     });
 
     it('pagina en cuanto se envia solo limit', async () => {
       const { service, repo } = makeService();
-      await service.findAll({ limit: 10 });
+      await service.findAll({ limit: 10 }, { esAdmin: true });
       expect(repo.findAllPaginated).toHaveBeenCalledWith(
         {},
         expect.anything(),
@@ -53,7 +74,7 @@ describe('ProductsService.findAll', () => {
 
     it('calcula el skip a partir de pagina y limite', async () => {
       const { service, repo } = makeService();
-      await service.findAll({ page: 3, limit: 20 });
+      await service.findAll({ page: 3, limit: 20 }, { esAdmin: true });
       expect(repo.findAllPaginated).toHaveBeenCalledWith(
         {},
         expect.anything(),
@@ -64,7 +85,7 @@ describe('ProductsService.findAll', () => {
 
     it('usa pagina 1 y limite 20 por defecto al paginar', async () => {
       const { service, repo } = makeService();
-      await service.findAll({ page: 1 });
+      await service.findAll({ page: 1 }, { esAdmin: true });
       expect(repo.findAllPaginated).toHaveBeenCalledWith(
         {},
         expect.anything(),
@@ -76,13 +97,19 @@ describe('ProductsService.findAll', () => {
     it('redondea totalPages hacia arriba', async () => {
       const { service, repo } = makeService();
       repo.findAllPaginated.mockResolvedValue({ data: [], total: 41 });
-      const res: any = await service.findAll({ page: 1, limit: 20 });
+      const res: any = await service.findAll(
+        { page: 1, limit: 20 },
+        { esAdmin: true },
+      );
       expect(res.meta.totalPages).toBe(3);
     });
 
     it('devuelve totalPages en 0 cuando no hay resultados', async () => {
       const { service } = makeService();
-      const res: any = await service.findAll({ page: 1, limit: 20 });
+      const res: any = await service.findAll(
+        { page: 1, limit: 20 },
+        { esAdmin: true },
+      );
       expect(res.meta.totalPages).toBe(0);
     });
   });
@@ -111,6 +138,44 @@ describe('ProductsService escrituras', () => {
       'r-rolex-sub',
       'Producto creado: Rolex Sub',
       'admin-1',
+    );
+  });
+});
+
+describe('ProductsService ocultoPorAdmin', () => {
+  it('update fija ocultoPorAdmin al cambiar disponible', async () => {
+    const { service, repo } = makeService();
+    repo.findById.mockResolvedValue({ id: 'p1', disponible: true });
+    repo.update.mockResolvedValue({ id: 'p1', display: 'X' });
+    await service.update('p1', { disponible: false });
+    expect(repo.update).toHaveBeenCalledWith('p1', {
+      disponible: false,
+      ocultoPorAdmin: true,
+    });
+  });
+
+  it('update sin cambio de disponible no toca ocultoPorAdmin', async () => {
+    const { service, repo } = makeService();
+    repo.findById.mockResolvedValue({ id: 'p1', disponible: false });
+    repo.update.mockResolvedValue({ id: 'p1', display: 'X' });
+    await service.update('p1', { disponible: false, precio: 100 });
+    expect(repo.update.mock.calls[0][1]).not.toHaveProperty('ocultoPorAdmin');
+  });
+
+  it('create con disponible=false nace oculto por el admin', async () => {
+    const { service, repo } = makeService();
+    repo.create.mockResolvedValue({ id: 'p1', display: 'X' });
+    await service.create({
+      id: 'p1',
+      nombre: 'X',
+      estilo: 'Y',
+      display: 'X — Y',
+      precio: 100,
+      cat: 'reloj',
+      disponible: false,
+    });
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ ocultoPorAdmin: true }),
     );
   });
 });

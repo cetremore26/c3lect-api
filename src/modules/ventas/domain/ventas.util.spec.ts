@@ -1,4 +1,6 @@
+import { BusinessRuleViolation } from '../../../shared/domain/domain-error';
 import {
+  agruparUnidadesPorModelo,
   calcularSaldoPendiente,
   esElegibleParaMetaOffline,
   planVentaUpdate,
@@ -130,8 +132,48 @@ describe('planVentaUpdate', () => {
     expect(plan.estado).toBe('Uso Personal');
   });
 
+  it('rechaza cambiar el modelo', () => {
+    expect(() => planVentaUpdate(existente, { modelo: 'Daytona' })).toThrow(
+      BusinessRuleViolation,
+    );
+  });
+
+  it('rechaza cambiar la marca', () => {
+    expect(() => planVentaUpdate(existente, { marca: 'Omega' })).toThrow(
+      BusinessRuleViolation,
+    );
+  });
+
+  it('acepta marca/modelo iguales ignorando mayúsculas, espacios y null vs ""', () => {
+    expect(
+      planVentaUpdate(existente, {
+        marca: ' rolex ',
+        modelo: 'SUBMARINER',
+        abono: 500,
+      }),
+    ).toMatchObject({ marca: 'Rolex', modelo: 'Submariner', abono: 500 });
+    expect(() =>
+      planVentaUpdate({ ...existente, marca: null }, { marca: '' }),
+    ).not.toThrow();
+  });
+
   it('sin fecha en el dto, conserva la existente', () => {
     const plan = planVentaUpdate(existente, {});
     expect(plan.fecha).toBe(existente.fecha);
+  });
+});
+
+describe('agruparUnidadesPorModelo', () => {
+  it('agrupa unidades por marca y modelo', () => {
+    expect(
+      agruparUnidadesPorModelo([
+        { marca: 'Rolex', modelo: 'Submariner' },
+        { marca: 'Rolex', modelo: 'Submariner' },
+        { marca: null, modelo: 'Organizador' },
+      ]),
+    ).toEqual([
+      { marca: 'Rolex', modelo: 'Submariner', cantidad: 2 },
+      { marca: null, modelo: 'Organizador', cantidad: 1 },
+    ]);
   });
 });

@@ -1,3 +1,4 @@
+import { BusinessRuleViolation } from '../../../shared/domain/domain-error';
 import { calcGananciaPorVenta } from './ganancia';
 
 export function calcularSaldoPendiente(
@@ -5,6 +6,24 @@ export function calcularSaldoPendiente(
   abono: number,
 ): number {
   return precioVenta > 0 ? Math.max(0, precioVenta - abono) : 0;
+}
+
+// Las ventas de plataforma se guardan una fila por unidad: esto las vuelve a
+// juntar en líneas (marca, modelo, cantidad), en orden de primera aparición.
+export function agruparUnidadesPorModelo(
+  ventas: { marca: string | null; modelo: string }[],
+): { marca: string | null; modelo: string; cantidad: number }[] {
+  const lineas = new Map<
+    string,
+    { marca: string | null; modelo: string; cantidad: number }
+  >();
+  for (const { marca, modelo } of ventas) {
+    const clave = JSON.stringify([marca ?? '', modelo]);
+    const linea = lineas.get(clave);
+    if (linea) linea.cantidad += 1;
+    else lineas.set(clave, { marca, modelo, cantidad: 1 });
+  }
+  return [...lineas.values()];
 }
 
 const CANALES_DIGITALES = ['WhatsApp', 'Instagram'];
@@ -42,7 +61,7 @@ export interface VentaExistente {
   estado: string;
 }
 
-export interface VentaUpdateDto {
+export interface VentaCambios {
   fecha?: string;
   cliente?: string;
   celular?: string;
@@ -79,8 +98,19 @@ export interface VentaUpdatePlan {
 // "Pagado" cuando el abono alcanza o supera el precio.
 export function planVentaUpdate(
   existing: VentaExistente,
-  dto: VentaUpdateDto,
+  dto: VentaCambios,
 ): VentaUpdatePlan {
+  const normalizar = (v: string | null | undefined) =>
+    (v ?? '').trim().toLowerCase();
+  if (
+    normalizar(dto.marca ?? existing.marca) !== normalizar(existing.marca) ||
+    normalizar(dto.modelo ?? existing.modelo) !== normalizar(existing.modelo)
+  ) {
+    throw new BusinessRuleViolation(
+      'No se puede cambiar la marca ni el modelo de una venta: bórrala y créala de nuevo.',
+    );
+  }
+
   const precioVenta = dto.precioVenta ?? existing.precioVenta;
   const costoProducto = dto.costoProducto ?? existing.costoProducto;
   const costoEnvio = dto.costoEnvio ?? existing.costoEnvio;
@@ -104,8 +134,8 @@ export function planVentaUpdate(
     fecha: dto.fecha ? new Date(dto.fecha) : existing.fecha,
     cliente: dto.cliente ?? existing.cliente,
     celular: dto.celular !== undefined ? dto.celular : existing.celular,
-    marca: dto.marca ?? existing.marca,
-    modelo: dto.modelo ?? existing.modelo,
+    marca: existing.marca,
+    modelo: existing.modelo,
     estilo: dto.estilo !== undefined ? dto.estilo : existing.estilo,
     fuente: dto.fuente !== undefined ? dto.fuente : existing.fuente,
     precioVenta,

@@ -15,6 +15,10 @@ export class VentasRepository implements VentasRepositoryPort {
     return this.db.client.historicalSale.findUnique({ where: { id } });
   }
 
+  findByOrderId(orderId: string): Promise<Venta[]> {
+    return this.db.client.historicalSale.findMany({ where: { orderId } });
+  }
+
   create(data: NuevaVenta): Promise<Venta> {
     return this.db.client.historicalSale.create({ data });
   }

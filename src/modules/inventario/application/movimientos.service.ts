@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EVENT_BUS } from '../../../shared/application/ports/event-bus.port';
 import type { EventBusPort } from '../../../shared/application/ports/event-bus.port';
 import { BusinessRuleViolation } from '../../../shared/domain/domain-error';
@@ -29,6 +29,8 @@ export interface LineaASacar extends ModeloRef {
 // así que lanzar aquí revierte la operación original.
 @Injectable()
 export class MovimientosService {
+  private readonly logger = new Logger(MovimientosService.name);
+
   constructor(
     @Inject(INVENTARIO_REPOSITORY)
     private readonly inventario: InventarioRepositoryPort,
@@ -87,24 +89,19 @@ export class MovimientosService {
     }
   }
 
-  async revertirSalidaPorPedido(lineas: LineaASacar[]): Promise<void> {
+  /**
+   * Cancelación de un pedido confirmado: repone lo que ventas tenía
+   * registrado como despachado (nunca lo que diga el catálogo hoy).
+   */
+  async revertirSalidaPorPedido(
+    lineas: (ModeloRef & { cantidad: number })[],
+  ): Promise<void> {
     for (const linea of lineas) {
-      const item = await this.inventario.buscarPorModelo(
-        linea.modelo,
-        linea.nombre,
+      await this.reponer(
+        { marca: linea.marca, modelo: linea.modelo },
+        linea.cantidad,
+        combineMarcaModelo(linea.marca, linea.modelo),
       );
-      if (!item) continue;
-
-      const stock = await this.inventario.incrementar(item.id, linea.cantidad);
-      if (stock > 0) {
-        await this.events.publish(
-          new StockRepuesto({
-            marca: linea.marca,
-            modelo: linea.modelo,
-            nombreProducto: linea.nombre,
-          }),
-        );
-      }
     }
   }
 
@@ -128,13 +125,7 @@ export class MovimientosService {
 
   /** Se borró una venta manual: vuelve la unidad. */
   async revertirVentaManual(ref: ModeloRef): Promise<void> {
-    await this.inventario.ajustarStockPorModelo(ref.modelo, 1);
-    const item = await this.inventario.findByModelo(ref.modelo);
-    if (item && item.stock > 0) {
-      await this.events.publish(
-        new StockRepuesto({ ...ref, nombreProducto: null }),
-      );
-    }
+    await this.reponer(ref, 1, ref.modelo);
   }
 
   async ingresoPorCompra(compra: IngresoData): Promise<void> {
@@ -169,6 +160,31 @@ export class MovimientosService {
         ? { marca: c.anterior.marca, modelo: c.anterior.modelo }
         : null,
     );
+  }
+
+  private async reponer(
+    ref: ModeloRef,
+    cantidad: number,
+    nombreLegado: string,
+  ): Promise<void> {
+    const item = await this.inventario.buscarPorModelo(
+      ref.modelo,
+      nombreLegado,
+    );
+    if (!item) {
+      // Modelo no rastreado (o ya borrado del inventario): no hay stock que reponer.
+      this.logger.warn(
+        `No se repuso stock: sin fila de inventario para "${combineMarcaModelo(ref.marca, ref.modelo)}" (marca=${ref.marca}, modelo=${ref.modelo}, cantidad=${cantidad}).`,
+      );
+      return;
+    }
+
+    const stock = await this.inventario.incrementar(item.id, cantidad);
+    if (stock > 0) {
+      await this.events.publish(
+        new StockRepuesto({ ...ref, nombreProducto: null }),
+      );
+    }
   }
 
   private async publicarIngreso(

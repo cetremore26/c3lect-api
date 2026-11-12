@@ -9,7 +9,7 @@ import { NotFoundError } from '../../../shared/domain/domain-error';
 import { combineMarcaModelo } from '../../../shared/domain/marca-modelo.util';
 import { CompraCorregida, CompraRegistrada } from '../domain/compra-events';
 import {
-  CompraUpdateDto,
+  CompraCambios,
   costoTotalCompra,
   planCompraUpdate,
 } from '../domain/compras.util';
@@ -75,7 +75,7 @@ export class ComprasService {
     return compra;
   }
 
-  async update(id: string, dto: CompraUpdateDto, userId?: string) {
+  async update(id: string, dto: CompraCambios, userId?: string) {
     const existing = await this.comprasRepository.findById(id);
     if (!existing) throw new NotFoundError(`Compra ${id} no encontrada`);
     const plan = planCompraUpdate(existing, dto);

@@ -5,7 +5,10 @@ import { EVENT_BUS } from '../../../../shared/application/ports/event-bus.port';
 import type { EventBusPort } from '../../../../shared/application/ports/event-bus.port';
 import { UNIT_OF_WORK } from '../../../../shared/application/ports/unit-of-work.port';
 import type { UnitOfWorkPort } from '../../../../shared/application/ports/unit-of-work.port';
-import { NotFoundError } from '../../../../shared/domain/domain-error';
+import {
+  ConflictError,
+  NotFoundError,
+} from '../../../../shared/domain/domain-error';
 import {
   ConfirmacionDePedidoRevertida,
   EstadoDePedidoCambiado,
@@ -38,21 +41,26 @@ export class UpdateOrderStatusUseCase {
     changedBy: string,
     { notificar = true }: { notificar?: boolean } = {},
   ) {
-    const order = await this.orders.findByIdForStatusTransition(id);
-    if (!order) throw new NotFoundError('Pedido no encontrado.');
+    // Lectura, validación, cambio de estado condicional + efectos en
+    // inventario/ventas en una sola transacción: los handlers `in-transaction`
+    // de PedidoConfirmado y ConfirmacionDePedidoRevertida corren aquí dentro.
+    const order = await this.uow.run(async () => {
+      const order = await this.orders.findByIdForStatusTransition(id);
+      if (!order) throw new NotFoundError('Pedido no encontrado.');
 
-    OrderStatusTransition.assertValid(order.status, nuevoEstado);
+      OrderStatusTransition.assertValid(order.status, nuevoEstado);
 
-    // Cambio de estado + efectos en inventario/ventas en una sola
-    // transacción: los handlers `in-transaction` de PedidoConfirmado y
-    // ConfirmacionDePedidoRevertida corren dentro de esta unidad de trabajo.
-    await this.uow.run(async () => {
       const updated = await this.orders.transitionStatus({
         orderId: id,
         statusAnterior: order.status,
         statusNuevo: nuevoEstado,
         changedBy,
       });
+      if (!updated) {
+        throw new ConflictError(
+          'El pedido cambió de estado mientras se procesaba. Recarga e inténtalo de nuevo.',
+        );
+      }
 
       if (OrderStatusTransition.seConfirma(order.status, nuevoEstado)) {
         await this.events.publish(
@@ -77,7 +85,6 @@ export class UpdateOrderStatusUseCase {
           new ConfirmacionDePedidoRevertida({
             orderId: id,
             orderNumber: updated.orderNumber,
-            lineas: await toLineasInventariables(this.catalog, updated.items),
           }),
         );
       }
@@ -96,6 +103,7 @@ export class UpdateOrderStatusUseCase {
           notificar,
         }),
       );
+      return order;
     });
 
     await this.audit.log(

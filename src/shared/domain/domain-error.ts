@@ -21,5 +21,8 @@ export class UnauthorizedError extends DomainError {}
 /** Quien pide la operación no tiene permiso sobre esa entidad (→ 403). */
 export class ForbiddenError extends DomainError {}
 
+/** Se superó un límite de frecuencia (→ 429). */
+export class TooManyRequestsError extends DomainError {}
+
 /** El estado actual choca con lo pedido, p. ej. un duplicado (→ 409). */
 export class ConflictError extends DomainError {}

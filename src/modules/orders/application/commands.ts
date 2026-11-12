@@ -12,6 +12,11 @@ export interface CreateOrderCommand {
   shippingInfo: ShippingData;
   fbp?: string;
   fbc?: string;
+  /**
+   * La genera el checkout al montarse. Repetirla devuelve el pedido ya
+   * creado en vez de duplicarlo (reintento tras un timeout, doble clic).
+   */
+  idempotencyKey?: string;
 }
 
 export interface ListOrdersQuery {

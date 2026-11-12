@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaTransactionHost } from '../../../../shared/infrastructure/prisma/prisma-transaction.host';
+import type { PropositoOtp } from '../../domain/otp-policy';
 import {
   Credenciales,
   IdentityRepositoryPort,
-  SecretoPendiente,
+  OtpVivo,
 } from '../../application/ports/identity-repository.port';
 
 const credencialesSelect = {
@@ -66,54 +67,101 @@ export class PrismaIdentityRepository implements IdentityRepositoryPort {
     return record;
   }
 
-  async deleteRefreshToken(id: string): Promise<void> {
-    await this.db.client.refreshToken.delete({ where: { id } });
+  async consumeRefreshToken(id: string): Promise<boolean> {
+    const { count } = await this.db.client.refreshToken.deleteMany({
+      where: { id },
+    });
+    return count === 1;
   }
 
   async deleteRefreshTokensOf(userId: string): Promise<void> {
     await this.db.client.refreshToken.deleteMany({ where: { userId } });
   }
 
-  async saveOtp(email: string, codeHash: string, expiresAt: Date) {
-    await this.db.client.otpCode.create({
-      data: { email, codeHash, expiresAt },
+  countOtpsSince(
+    email: string,
+    proposito: PropositoOtp,
+    desde: Date,
+  ): Promise<number> {
+    return this.db.client.otpCode.count({
+      where: { email, proposito, createdAt: { gte: desde } },
     });
   }
 
-  async findValidOtps(email: string): Promise<SecretoPendiente[]> {
-    const rows = await this.db.client.otpCode.findMany({
-      where: { email, used: false, expiresAt: { gt: new Date() } },
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, codeHash: true },
-    });
-    return rows.map((r) => ({ id: r.id, hash: r.codeHash }));
-  }
-
-  async markOtpUsed(id: string): Promise<void> {
-    await this.db.client.otpCode.update({
-      where: { id },
+  async invalidateOtps(email: string, proposito: PropositoOtp): Promise<void> {
+    await this.db.client.otpCode.updateMany({
+      where: { email, proposito, used: false },
       data: { used: true },
     });
+  }
+
+  async saveOtp(data: {
+    email: string;
+    proposito: PropositoOtp;
+    codeHash: string;
+    expiresAt: Date;
+  }): Promise<void> {
+    await this.db.client.otpCode.create({ data });
+  }
+
+  async findLiveOtp(
+    email: string,
+    proposito: PropositoOtp,
+  ): Promise<OtpVivo | null> {
+    const row = await this.db.client.otpCode.findFirst({
+      where: { email, proposito, used: false, expiresAt: { gt: new Date() } },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, codeHash: true, intentos: true },
+    });
+    return row
+      ? { id: row.id, hash: row.codeHash, intentos: row.intentos }
+      : null;
+  }
+
+  async reserveOtpAttempt(id: string, maxIntentos: number): Promise<boolean> {
+    const { count } = await this.db.client.otpCode.updateMany({
+      where: { id, used: false, intentos: { lt: maxIntentos } },
+      data: { intentos: { increment: 1 } },
+    });
+    return count === 1;
+  }
+
+  async consumeOtp(id: string): Promise<boolean> {
+    const { count } = await this.db.client.otpCode.updateMany({
+      where: { id, used: false },
+      data: { used: true },
+    });
+    return count === 1;
   }
 
   async savePasswordReset(userId: string, tokenHash: string, expiresAt: Date) {
-    await this.db.client.passwordReset.create({
+    const row = await this.db.client.passwordReset.create({
       data: { userId, tokenHash, expiresAt },
+      select: { id: true },
     });
+    return { id: row.id };
   }
 
-  async findValidPasswordResets() {
-    const rows = await this.db.client.passwordReset.findMany({
-      where: { used: false, expiresAt: { gt: new Date() } },
-      select: { id: true, userId: true, tokenHash: true },
-    });
-    return rows.map((r) => ({ id: r.id, userId: r.userId, hash: r.tokenHash }));
-  }
-
-  async markPasswordResetUsed(id: string): Promise<void> {
-    await this.db.client.passwordReset.update({
-      where: { id },
+  async invalidatePasswordResetsOf(userId: string): Promise<void> {
+    await this.db.client.passwordReset.updateMany({
+      where: { userId, used: false },
       data: { used: true },
     });
+  }
+
+  async findValidPasswordReset(id: string) {
+    const row = await this.db.client.passwordReset.findFirst({
+      where: { id, used: false, expiresAt: { gt: new Date() } },
+      select: { id: true, userId: true, tokenHash: true },
+    });
+    return row ? { id: row.id, userId: row.userId, hash: row.tokenHash } : null;
+  }
+
+  async consumePasswordReset(id: string): Promise<boolean> {
+    const { count } = await this.db.client.passwordReset.updateMany({
+      where: { id, used: false },
+      data: { used: true },
+    });
+    return count === 1;
   }
 }

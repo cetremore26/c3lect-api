@@ -1,4 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
+import {
+  finDelDiaDeNegocio,
+  inicioDelDiaDeNegocio,
+} from '../../../../shared/domain/fecha-negocio';
 import { ListOrdersQuery, Requester } from '../commands';
 import { ORDER_REPOSITORY } from '../ports/order-repository.port';
 import type { OrderRepositoryPort } from '../ports/order-repository.port';
@@ -25,10 +29,8 @@ export class ListOrdersUseCase {
         // Clientes solo ven sus propios pedidos
         userId: rol !== 'ADMIN' ? userId : undefined,
         status,
-        fechaDesde: fechaDesde ? new Date(fechaDesde) : undefined,
-        fechaHasta: fechaHasta
-          ? new Date(fechaHasta + 'T23:59:59Z')
-          : undefined,
+        fechaDesde: fechaDesde ? inicioDelDiaDeNegocio(fechaDesde) : undefined,
+        fechaHasta: fechaHasta ? finDelDiaDeNegocio(fechaHasta) : undefined,
         search: rol === 'ADMIN' ? search : undefined,
       },
       skip,

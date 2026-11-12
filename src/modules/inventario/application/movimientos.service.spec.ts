@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { BusinessRuleViolation } from '../../../shared/domain/domain-error';
 import { fakeEventBus } from '../../../shared/testing/fakes';
 import {
@@ -126,13 +127,38 @@ describe('MovimientosService.salidaPorPedido', () => {
 });
 
 describe('MovimientosService.revertirSalidaPorPedido', () => {
-  it('devuelve el stock reservado y avisa que hay stock de nuevo', async () => {
+  it('sin fila de inventario no repone y deja un warn con marca, modelo y cantidad', async () => {
+    const { service, repo } = makeService(null);
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    await service.revertirSalidaPorPedido([
+      { marca: 'Rolex', modelo: 'Submariner', cantidad: 2 },
+    ]);
+    expect(repo.incrementar).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    const msg = String(warn.mock.calls[0][0]);
+    expect(msg).toContain('Rolex');
+    expect(msg).toContain('Submariner');
+    expect(msg).toContain('2');
+    warn.mockRestore();
+  });
+
+  it('revertirSalidaPorPedido repone por modelo con fallback "Marca Modelo" e incremento por id', async () => {
     const { service, repo, events } = makeService();
-
-    await service.revertirSalidaPorPedido(pedido.lineas);
-
+    await service.revertirSalidaPorPedido([
+      { marca: 'Rolex', modelo: 'Submariner', cantidad: 2 },
+    ]);
+    expect(repo.buscarPorModelo).toHaveBeenCalledWith(
+      'Submariner',
+      'Rolex Submariner',
+    );
     expect(repo.incrementar).toHaveBeenCalledWith('inv-1', 2);
-    expect(events.of(StockRepuesto)).toHaveLength(1);
+    expect(events.of(StockRepuesto)[0].ref).toEqual({
+      marca: 'Rolex',
+      modelo: 'Submariner',
+      nombreProducto: null,
+    });
   });
 });
 
@@ -176,11 +202,23 @@ describe('MovimientosService ventas manuales', () => {
 
     await service.revertirVentaManual(ref);
 
-    expect(repo.ajustarStockPorModelo).toHaveBeenCalledWith('Submariner', 1);
+    expect(repo.incrementar).toHaveBeenCalledWith('inv-1', 1);
     expect(events.of(StockRepuesto)[0].ref).toEqual({
       ...ref,
       nombreProducto: null,
     });
+  });
+
+  it('revertirVentaManual busca sin distinguir mayúsculas e incrementa por id', async () => {
+    const { service, repo, events } = makeService();
+    await service.revertirVentaManual({ marca: 'Rolex', modelo: 'submariner' });
+    expect(repo.buscarPorModelo).toHaveBeenCalledWith(
+      'submariner',
+      'submariner',
+    );
+    expect(repo.incrementar).toHaveBeenCalledWith('inv-1', 1);
+    expect(repo.ajustarStockPorModelo).not.toHaveBeenCalled();
+    expect(events.of(StockRepuesto)).toHaveLength(1);
   });
 
   it('si el modelo no esta en inventario, no intenta re-habilitar nada', async () => {

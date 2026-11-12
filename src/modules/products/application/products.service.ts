@@ -4,6 +4,8 @@ import type { AuditLogPort } from '../../../shared/application/ports/audit-log.p
 import { NotFoundError } from '../../../shared/domain/domain-error';
 import {
   estaIncompleto,
+  ocultoPorAdminTrasCambio,
+  type ProductChanges,
   type Product,
   type ProductData,
   type ProductFilter,
@@ -28,14 +30,17 @@ export class ProductsService {
     @Inject(AUDIT_LOG) private readonly audit: AuditLogPort,
   ) {}
 
-  async findAll(query: ProductQuery) {
+  async findAll(query: ProductQuery, opts: { esAdmin: boolean }) {
     const {
       page: pageQuery,
       limit: limitQuery,
       sortBy,
       sortOrder,
-      ...filter
+      ...filtroBase
     } = query;
+    const filter: ProductFilter = opts.esAdmin
+      ? filtroBase
+      : { ...filtroBase, soloPublicados: true };
     const sort = { sortBy, sortOrder };
 
     if (pageQuery == null && limitQuery == null) {
@@ -65,7 +70,10 @@ export class ProductsService {
   }
 
   async create(data: ProductData, userId?: string) {
-    const product = await this.productsRepository.create(data);
+    const product = await this.productsRepository.create({
+      ...data,
+      ocultoPorAdmin: data.disponible === false,
+    });
     await this.audit.log(
       'CREAR',
       'producto',
@@ -78,11 +86,15 @@ export class ProductsService {
 
   async update(
     id: string,
-    data: Partial<Omit<ProductData, 'id'>>,
+    data: Omit<ProductChanges, 'ocultoPorAdmin'>,
     userId?: string,
   ) {
-    await this.findExisting(id);
-    const product = await this.productsRepository.update(id, data);
+    const actual = await this.findExisting(id);
+    const oculto = ocultoPorAdminTrasCambio(actual, data);
+    const product = await this.productsRepository.update(
+      id,
+      oculto === undefined ? data : { ...data, ocultoPorAdmin: oculto },
+    );
     await this.audit.log(
       'EDITAR',
       'producto',

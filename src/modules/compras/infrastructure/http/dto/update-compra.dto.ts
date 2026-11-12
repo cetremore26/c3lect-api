@@ -1,4 +1,4 @@
-import type { CompraUpdateDto } from '../../../domain/compras.util';
+import type { CompraCambios } from '../../../domain/compras.util';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsDateString,
@@ -11,7 +11,7 @@ import {
 } from 'class-validator';
 import { CategoriaCompra } from './create-compra.dto';
 
-export class UpdateCompraDto implements CompraUpdateDto {
+export class UpdateCompraDto implements CompraCambios {
   @ApiPropertyOptional()
   @IsOptional()
   @IsDateString()
