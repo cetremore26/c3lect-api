@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EVENT_BUS } from '../../../shared/application/ports/event-bus.port';
 import type { EventBusPort } from '../../../shared/application/ports/event-bus.port';
 import { BusinessRuleViolation } from '../../../shared/domain/domain-error';
@@ -29,6 +29,8 @@ export interface LineaASacar extends ModeloRef {
 // así que lanzar aquí revierte la operación original.
 @Injectable()
 export class MovimientosService {
+  private readonly logger = new Logger(MovimientosService.name);
+
   constructor(
     @Inject(INVENTARIO_REPOSITORY)
     private readonly inventario: InventarioRepositoryPort,
@@ -169,7 +171,13 @@ export class MovimientosService {
       ref.modelo,
       nombreLegado,
     );
-    if (!item) return; // modelo no rastreado (o ya borrado del inventario)
+    if (!item) {
+      // Modelo no rastreado (o ya borrado del inventario): no hay stock que reponer.
+      this.logger.warn(
+        `No se repuso stock: sin fila de inventario para "${combineMarcaModelo(ref.marca, ref.modelo)}" (marca=${ref.marca}, modelo=${ref.modelo}, cantidad=${cantidad}).`,
+      );
+      return;
+    }
 
     const stock = await this.inventario.incrementar(item.id, cantidad);
     if (stock > 0) {

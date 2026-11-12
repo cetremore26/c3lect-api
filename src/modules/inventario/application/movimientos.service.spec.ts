@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { BusinessRuleViolation } from '../../../shared/domain/domain-error';
 import { fakeEventBus } from '../../../shared/testing/fakes';
 import {
@@ -126,6 +127,23 @@ describe('MovimientosService.salidaPorPedido', () => {
 });
 
 describe('MovimientosService.revertirSalidaPorPedido', () => {
+  it('sin fila de inventario no repone y deja un warn con marca, modelo y cantidad', async () => {
+    const { service, repo } = makeService(null);
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+    await service.revertirSalidaPorPedido([
+      { marca: 'Rolex', modelo: 'Submariner', cantidad: 2 },
+    ]);
+    expect(repo.incrementar).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    const msg = String(warn.mock.calls[0][0]);
+    expect(msg).toContain('Rolex');
+    expect(msg).toContain('Submariner');
+    expect(msg).toContain('2');
+    warn.mockRestore();
+  });
+
   it('revertirSalidaPorPedido repone por modelo con fallback "Marca Modelo" e incremento por id', async () => {
     const { service, repo, events } = makeService();
     await service.revertirSalidaPorPedido([
