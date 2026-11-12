@@ -10,6 +10,31 @@ function makeService() {
 }
 
 describe('VentasDePedidoService', () => {
+  afterEach(() => jest.useRealTimers());
+
+  it('la fecha de la venta es el d�a de Bogot�', async () => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-11T03:30:00Z'));
+    const { service, repo } = makeService();
+
+    await service.registrar({
+      orderId: 'order-1',
+      cliente: 'Cliente Test',
+      celular: null,
+      lineas: [
+        {
+          marca: 'Rolex',
+          modelo: 'Submariner',
+          cantidad: 1,
+          precioUnitario: 1000,
+          costoUnitario: 600,
+        },
+      ],
+    });
+
+    const [filas] = repo.createMany.mock.calls[0];
+    expect(filas[0].fecha.toISOString()).toBe('2026-11-10T00:00:00.000Z');
+  });
+
   it('registra una venta "Plataforma" pagada por cada unidad del pedido', async () => {
     const { service, repo } = makeService();
 

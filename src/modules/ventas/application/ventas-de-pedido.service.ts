@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { diaDeNegocioComoFecha } from '../../../shared/domain/fecha-negocio';
 import { calcGananciaPorVenta } from '../domain/ganancia';
 import { VENTAS_REPOSITORY } from './ports/ventas-repository.port';
 import type { VentasRepositoryPort } from './ports/ventas-repository.port';
@@ -28,7 +29,7 @@ export class VentasDePedidoService {
   ) {}
 
   async registrar(salida: SalidaDePedido): Promise<void> {
-    const fecha = new Date();
+    const fecha = diaDeNegocioComoFecha();
     const filas = salida.lineas.flatMap((linea) => {
       const gananciaNeta = calcGananciaPorVenta(
         'Pagado',

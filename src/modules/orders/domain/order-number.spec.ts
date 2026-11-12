@@ -11,4 +11,10 @@ describe('buildOrderNumber', () => {
     );
     expect(suffixes.size).toBeGreaterThan(1);
   });
+
+  it('usa el d�a de Bogot�, no el del servidor UTC', () => {
+    expect(buildOrderNumber(new Date('2026-11-11T03:30:00Z'))).toMatch(
+      /^C3L-20261110-[A-Z0-9]{5}$/,
+    );
+  });
 });
