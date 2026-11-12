@@ -5,7 +5,10 @@ import { EVENT_BUS } from '../../../shared/application/ports/event-bus.port';
 import type { EventBusPort } from '../../../shared/application/ports/event-bus.port';
 import { UNIT_OF_WORK } from '../../../shared/application/ports/unit-of-work.port';
 import type { UnitOfWorkPort } from '../../../shared/application/ports/unit-of-work.port';
-import { NotFoundError } from '../../../shared/domain/domain-error';
+import {
+  BusinessRuleViolation,
+  NotFoundError,
+} from '../../../shared/domain/domain-error';
 import { combineMarcaModelo } from '../../../shared/domain/marca-modelo.util';
 import { calcGananciaPorVenta } from '../domain/ganancia';
 import { VentaEliminada, VentaManualRegistrada } from '../domain/venta-events';
@@ -121,12 +124,12 @@ export class VentasService {
   async remove(id: string, userId?: string) {
     const existing = await this.findExisting(id);
 
-    // TODO: si existing.orderId está presente, esta venta la generó la
-    // confirmación de un pedido de la plataforma. Borrarla aquí devuelve el
-    // stock OTRA VEZ, independiente de lo que haga después el pedido — puede
-    // reponer dos veces si el pedido también se cancela. Falta decidir si se
-    // bloquea este endpoint para ventas con orderId, o se redirige al flujo
-    // de pedidos.
+    if (existing.orderId) {
+      throw new BusinessRuleViolation(
+        'Esta venta viene de un pedido de la plataforma: cancela el pedido en su lugar.',
+      );
+    }
+
     await this.uow.run(async () => {
       await this.ventasRepository.remove(id);
       await this.events.publish(

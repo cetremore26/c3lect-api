@@ -1,3 +1,4 @@
+import { BusinessRuleViolation } from '../../../shared/domain/domain-error';
 import {
   agruparUnidadesPorModelo,
   calcularSaldoPendiente,
@@ -129,6 +130,31 @@ describe('planVentaUpdate', () => {
       { estado: 'Uso Personal' },
     );
     expect(plan.estado).toBe('Uso Personal');
+  });
+
+  it('rechaza cambiar el modelo', () => {
+    expect(() => planVentaUpdate(existente, { modelo: 'Daytona' })).toThrow(
+      BusinessRuleViolation,
+    );
+  });
+
+  it('rechaza cambiar la marca', () => {
+    expect(() => planVentaUpdate(existente, { marca: 'Omega' })).toThrow(
+      BusinessRuleViolation,
+    );
+  });
+
+  it('acepta marca/modelo iguales ignorando mayúsculas, espacios y null vs ""', () => {
+    expect(
+      planVentaUpdate(existente, {
+        marca: ' rolex ',
+        modelo: 'SUBMARINER',
+        abono: 500,
+      }),
+    ).toMatchObject({ marca: 'Rolex', modelo: 'Submariner', abono: 500 });
+    expect(() =>
+      planVentaUpdate({ ...existente, marca: null }, { marca: '' }),
+    ).not.toThrow();
   });
 
   it('sin fecha en el dto, conserva la existente', () => {
