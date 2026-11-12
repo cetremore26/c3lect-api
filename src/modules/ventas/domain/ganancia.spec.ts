@@ -29,4 +29,16 @@ describe('calcGananciaPorVenta', () => {
       calcGananciaPorVenta('Pagado', 100, 60, 5, 100),
     );
   });
+
+  it('redondea al peso con abono no proporcional', () => {
+    // margen 50000; abono 70000/150000 -> 23333.33...
+    expect(calcGananciaPorVenta('Abonado', 150000, 100000, 0, 70000)).toBe(
+      23333,
+    );
+  });
+
+  it('normaliza -0 a 0', () => {
+    // margen -100; abono 1/300 -> -0.33 -> Math.round = -0
+    expect(calcGananciaPorVenta('Abonado', 300, 400, 0, 1)).toBe(0);
+  });
 });
